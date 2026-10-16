@@ -126,8 +126,8 @@ class App:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("Desktop Gas Sign")
-        self.root.minsize(560, 520)
-        self.root.geometry("680x640")
+        self.root.minsize(640, 640)
+        self.root.geometry("760x740")
 
         self.address = tk.StringVar()
         self.place = tk.StringVar()
@@ -192,18 +192,11 @@ class App:
             self.show_wiring()
 
     def _build(self) -> None:
-        style = ttk.Style()
-        if "vista" in style.theme_names():
-            style.theme_use("vista")
-        style.configure("Title.TLabel", font=("Segoe UI", 22))
-        style.configure("Body.TLabel", font=("Segoe UI", 14))
-        style.configure("Wire.TLabel", font=("Segoe UI", 13))
-        style.configure("Big.TLabel", font=("Segoe UI", 32, "bold"))
-
+        self._apply_style()
         self._window_icon = ImageTk.PhotoImage(load_app_icon(256))
         self.root.iconphoto(True, self._window_icon)
 
-        self.shell = ttk.Frame(self.root, padding=20)
+        self.shell = ttk.Frame(self.root, padding=(36, 32))
         self.shell.pack(fill="both", expand=True)
 
         self.wiring_page = ttk.Frame(self.shell)
@@ -213,12 +206,61 @@ class App:
         self._build_upload()
         self._build_prices()
 
+    def _apply_style(self) -> None:
+        paper = "#f4f1ea"
+        card = "#fffcf7"
+        ink = "#1c2822"
+        muted = "#5d6a63"
+        green = "#1d6b43"
+        style = ttk.Style()
+        style.theme_use("clam")
+        self.root.configure(bg=paper)
+        self.root.option_add("*Font", "Segoe UI 12")
+        style.configure(".", background=paper, foreground=ink, font=("Segoe UI", 12))
+        style.configure("TFrame", background=paper)
+        style.configure("Card.TFrame", background=card)
+        style.configure("TLabel", background=paper, foreground=ink, font=("Segoe UI", 12))
+        style.configure("Title.TLabel", background=paper, foreground=ink, font=("Segoe UI", 28))
+        style.configure("Body.TLabel", background=paper, foreground=ink, font=("Segoe UI", 14))
+        style.configure("Muted.TLabel", background=paper, foreground=muted, font=("Segoe UI", 12))
+        style.configure("Wire.TLabel", background=card, foreground=ink, font=("Segoe UI", 15))
+        style.configure("WireHead.TLabel", background=card, foreground=ink, font=("Segoe UI", 13, "bold"))
+        style.configure("Big.TLabel", background=paper, foreground=ink, font=("Segoe UI", 42, "bold"))
+        style.configure("TEntry", fieldbackground=card, padding=8)
+        style.configure("TCombobox", fieldbackground=card, padding=6)
+        style.configure("TScale", background=paper)
+        style.configure(
+            "TButton",
+            font=("Segoe UI", 12),
+            padding=(16, 10),
+            background=card,
+            foreground=ink,
+            borderwidth=1,
+            focusthickness=0,
+        )
+        style.map("TButton", background=[("pressed", "#e6e0d4"), ("active", "#ffffff")])
+        style.configure(
+            "Accent.TButton",
+            font=("Segoe UI", 12),
+            padding=(18, 10),
+            background=green,
+            foreground="#ffffff",
+            borderwidth=0,
+            focusthickness=0,
+            focuscolor=green,
+        )
+        style.map(
+            "Accent.TButton",
+            background=[("pressed", "#154e32"), ("active", "#175636"), ("disabled", "#b7c9be")],
+            foreground=[("disabled", "#f7f6f3")],
+        )
+
     def _build_wiring(self) -> None:
         page = self.wiring_page
         ttk.Label(page, text="Wire the sign", style="Title.TLabel").pack(anchor="w")
 
-        table = ttk.Frame(page)
-        table.pack(anchor="w")
+        table = ttk.Frame(page, style="Card.TFrame", padding=(20, 16))
+        table.pack(anchor="w", pady=(28, 0))
         rows = (
             ("Pro Micro", "Top display", "Bottom display"),
             ("VCC", "5V", "5V"),
@@ -230,21 +272,19 @@ class App:
         )
         for row_index, row in enumerate(rows):
             for column, text in enumerate(row):
-                label = ttk.Label(table, text=text, style="Wire.TLabel", width=18)
-                if row_index == 0:
-                    label.configure(font=("Segoe UI", 13, "bold"))
-                label.grid(row=row_index, column=column, sticky="w", padx=(0, 18), pady=3)
+                kind = "WireHead.TLabel" if row_index == 0 else "Wire.TLabel"
+                ttk.Label(table, text=text, style=kind, width=16).grid(
+                    row=row_index, column=column, sticky="w", padx=(0, 28), pady=6
+                )
 
         ttk.Label(
             page,
-            text=(
-                "Each display has a second header.\n"
-                "That header is the same four pins. Use one header only."
-            ),
+            text="Each display has a second header. That header is the same four pins. Use one header only.",
             style="Body.TLabel",
+            wraplength=640,
             justify="left",
-        ).pack(anchor="w", pady=(18, 16))
-        ttk.Button(page, text="Next", command=self.show_upload).pack(anchor="w")
+        ).pack(anchor="w", pady=(28, 28))
+        ttk.Button(page, text="Next", style="Accent.TButton", command=self.show_upload).pack(anchor="w")
 
     def _build_upload(self) -> None:
         page = self.upload_page
@@ -253,85 +293,100 @@ class App:
             page,
             text="Plug the sign into the PC with the USB cable.",
             style="Body.TLabel",
-        ).pack(anchor="w", pady=(16, 16))
-        self.upload_button = ttk.Button(page, text="Upload to sign", command=self.start_upload)
-        self.upload_button.pack(anchor="w")
-        ttk.Label(page, textvariable=self.upload_status, style="Body.TLabel", wraplength=560).pack(
-            anchor="w", pady=(12, 16)
+        ).pack(anchor="w", pady=(24, 28))
+        actions = ttk.Frame(page)
+        actions.pack(anchor="w")
+        self.upload_button = ttk.Button(
+            actions, text="Upload to sign", style="Accent.TButton", command=self.start_upload
         )
-        self.continue_button = ttk.Button(page, text="Continue", command=self.finish_setup)
+        self.upload_button.pack(side="left")
+        ttk.Button(actions, text="Skip", command=self.finish_setup).pack(side="left", padx=(12, 0))
+        ttk.Label(
+            page,
+            text="Choose Skip if this sign already has the program.",
+            style="Muted.TLabel",
+        ).pack(anchor="w", pady=(14, 0))
+        ttk.Label(page, textvariable=self.upload_status, style="Body.TLabel", wraplength=640).pack(
+            anchor="w", pady=(20, 20)
+        )
+        self.continue_button = ttk.Button(page, text="Continue", style="Accent.TButton", command=self.finish_setup)
 
     def _build_prices(self) -> None:
         page = self.price_page
-        footer = ttk.Label(page, text=TRAY_LINE, wraplength=620, justify="left")
-        footer.pack(side="bottom", anchor="w", pady=(16, 0))
+        footer = ttk.Label(page, text=TRAY_LINE, style="Muted.TLabel", wraplength=680, justify="left")
+        footer.pack(side="bottom", anchor="w", pady=(24, 0))
         self.footer_label = footer
 
+        ttk.Label(page, text="Prices", style="Title.TLabel").pack(anchor="w")
+
         city = ttk.Frame(page)
-        city.pack(fill="x")
+        city.pack(fill="x", pady=(28, 0))
         ttk.Label(city, text="City", style="Body.TLabel").pack(side="left")
-        self.address_entry = ttk.Entry(city, textvariable=self.address, font=("Segoe UI", 12))
-        self.address_entry.pack(side="left", fill="x", expand=True, padx=8)
+        self.address_entry = ttk.Entry(city, textvariable=self.address, font=("Segoe UI", 14))
+        self.address_entry.pack(side="left", fill="x", expand=True, padx=(12, 12))
         self.address_entry.bind("<Return>", lambda _event: self.start_lookup(True))
-        self.lookup_button = ttk.Button(city, text="Look up", command=lambda: self.start_lookup(True))
+        self.lookup_button = ttk.Button(
+            city, text="Look up", style="Accent.TButton", command=lambda: self.start_lookup(True)
+        )
         self.lookup_button.pack(side="left")
-        ttk.Button(city, text="Clear", command=self.clear_search).pack(side="left", padx=(8, 0))
+        ttk.Button(city, text="Clear", command=self.clear_search).pack(side="left", padx=(12, 0))
 
         boxes = ttk.Frame(page)
-        boxes.pack(fill="x", pady=(16, 0))
-        ttk.Label(boxes, text="Regular").grid(row=0, column=0, sticky="w")
-        ttk.Label(boxes, text="Diesel").grid(row=0, column=1, sticky="w", padx=(12, 0))
-        ttk.Entry(boxes, textvariable=self.typed_regular, width=12, font=("Segoe UI", 14)).grid(
-            row=1, column=0, sticky="w", pady=(4, 0)
+        boxes.pack(fill="x", pady=(28, 0))
+        ttk.Label(boxes, text="Regular", style="Muted.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(boxes, text="Diesel", style="Muted.TLabel").grid(row=0, column=1, sticky="w", padx=(24, 0))
+        ttk.Entry(boxes, textvariable=self.typed_regular, width=12, font=("Segoe UI", 16)).grid(
+            row=1, column=0, sticky="w", pady=(8, 0)
         )
-        ttk.Entry(boxes, textvariable=self.typed_diesel, width=12, font=("Segoe UI", 14)).grid(
-            row=1, column=1, sticky="w", padx=(12, 0), pady=(4, 0)
+        ttk.Entry(boxes, textvariable=self.typed_diesel, width=12, font=("Segoe UI", 16)).grid(
+            row=1, column=1, sticky="w", padx=(24, 0), pady=(8, 0)
         )
-        ttk.Button(boxes, text="Set prices", command=self.set_prices).grid(
-            row=1, column=2, sticky="sw", padx=(12, 0)
+        ttk.Button(boxes, text="Set prices", style="Accent.TButton", command=self.set_prices).grid(
+            row=1, column=2, sticky="sw", padx=(20, 0)
         )
 
         figures = ttk.Frame(page)
-        figures.pack(fill="x", pady=(18, 0))
+        figures.pack(fill="x", pady=(32, 0))
         self._price_column(figures, "Regular", self.regular_show).pack(side="left", expand=True, fill="x")
         self._price_column(figures, "Diesel", self.diesel_show).pack(side="left", expand=True, fill="x")
 
-        self.note_label = ttk.Label(page, textvariable=self.note, wraplength=620, justify="left")
-        self.note_label.pack(anchor="w", pady=(8, 0))
-        ttk.Label(page, textvariable=self.unit_show).pack(anchor="w")
+        self.note_label = ttk.Label(page, textvariable=self.note, style="Body.TLabel", wraplength=680, justify="left")
+        self.note_label.pack(anchor="w", pady=(12, 0))
+        ttk.Label(page, textvariable=self.unit_show, style="Muted.TLabel").pack(anchor="w", pady=(4, 0))
 
         sign = ttk.Frame(page)
-        sign.pack(fill="x", pady=(18, 0))
-        ttk.Label(sign, text="Port").pack(side="left")
+        sign.pack(fill="x", pady=(28, 0))
+        ttk.Label(sign, text="Port", style="Body.TLabel").pack(side="left")
         self.port_combo = ttk.Combobox(sign, textvariable=self.port_label, width=28, state="readonly")
-        self.port_combo.pack(side="left", padx=8)
+        self.port_combo.pack(side="left", padx=(12, 12))
         ttk.Button(sign, text="Refresh", command=self.refresh_ports).pack(side="left")
-        self.connect_button = ttk.Button(sign, text="Connect", command=self.on_connect_clicked)
-        self.connect_button.pack(side="left", padx=8)
-        ttk.Label(sign, textvariable=self.link_status).pack(side="left", padx=(8, 0))
+        self.connect_button = ttk.Button(sign, text="Connect", style="Accent.TButton", command=self.on_connect_clicked)
+        self.connect_button.pack(side="left", padx=(12, 0))
+        ttk.Label(sign, textvariable=self.link_status, style="Body.TLabel").pack(side="left", padx=(16, 0))
 
         bright = ttk.Frame(page)
-        bright.pack(fill="x", pady=(14, 0))
-        ttk.Label(bright, text="Brightness").pack(side="left")
+        bright.pack(fill="x", pady=(22, 0))
+        ttk.Label(bright, text="Brightness", style="Body.TLabel").pack(side="left")
         scale = ttk.Scale(bright, from_=0, to=7, variable=self.brightness, command=self._on_brightness)
-        scale.pack(side="left", fill="x", expand=True, padx=8)
+        scale.pack(side="left", fill="x", expand=True, padx=(12, 12))
         scale.bind("<ButtonRelease-1>", lambda _event: self.send_brightness())
-        ttk.Label(bright, textvariable=self.brightness_show, width=2).pack(side="left")
+        ttk.Label(bright, textvariable=self.brightness_show, style="Body.TLabel", width=2).pack(side="left")
 
         self.wiring_link = tk.Label(
             page,
             text="Wiring",
-            fg="#0b5cab",
+            fg="#1d6b43",
+            bg="#f4f1ea",
             cursor="hand2",
-            font=("Segoe UI", 10, "underline"),
+            font=("Segoe UI", 11, "underline"),
         )
-        self.wiring_link.pack(anchor="w", pady=(16, 0))
+        self.wiring_link.pack(anchor="w", pady=(22, 0))
         self.wiring_link.bind("<Button-1>", lambda _event: self.show_wiring())
 
     def _price_column(self, parent, title: str, variable: tk.StringVar) -> ttk.Frame:
         frame = ttk.Frame(parent)
-        ttk.Label(frame, text=title).pack(anchor="w")
-        ttk.Label(frame, textvariable=variable, style="Big.TLabel").pack(anchor="w")
+        ttk.Label(frame, text=title, style="Muted.TLabel").pack(anchor="w")
+        ttk.Label(frame, textvariable=variable, style="Big.TLabel").pack(anchor="w", pady=(4, 0))
         return frame
 
     def _show(self, page: ttk.Frame) -> None:
