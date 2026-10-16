@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.spec
+pc/gas_sign_config.json
+pc/geocode_cache.json
+pc/.cache/
+pc/build/
+pc/dist/
+build/
