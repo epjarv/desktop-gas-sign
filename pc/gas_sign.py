@@ -33,7 +33,7 @@ from prices import PriceError, Lookup, average, format_display, lookup_address
 from uploader import UploadError, upload_sketch
 from view import apply_scale, build as build_view, show as show_page
 
-APP_VERSION = "1.7"
+APP_VERSION = "1.8"
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "gas_sign_config.json"
 UNIT_LABELS = {
@@ -158,6 +158,7 @@ class App:
         self._brightness_lock = False
         self._last_brightness_sent: int | None = None
         self.refresh_minutes = tk.IntVar(value=30)
+        self.interval_text = tk.StringVar(value="30")
 
         self.unit = "dollars_per_gallon"
         self.regular_text = "----"
@@ -685,19 +686,27 @@ class App:
     def _commit_interval(self) -> None:
         if self._filling:
             return
-        value = self.minutes()
+        raw = self.interval_text.get().strip()
+        try:
+            value = int(raw)
+        except ValueError:
+            self._filling = True
+            try:
+                self.interval_text.set(str(self.refresh_minutes.get()))
+            finally:
+                self._filling = False
+            return
+        value = min(240, max(15, value))
+        previous = self.refresh_minutes.get()
         self._filling = True
         try:
-            current = self.refresh_minutes.get()
-        except (tk.TclError, ValueError):
-            current = None
-        try:
-            if current != value:
-                self.refresh_minutes.set(value)
+            self.refresh_minutes.set(value)
+            self.interval_text.set(str(value))
         finally:
             self._filling = False
         self.save_config()
-        self.schedule_refresh()
+        if value != previous:
+            self.schedule_refresh()
 
     def minutes(self) -> int:
         try:
@@ -755,6 +764,7 @@ class App:
             self.brightness_show.set(str(self.brightness.get()))
             self.refresh_minutes.set(int(payload.get("refresh_minutes") or 30))
             self.refresh_minutes.set(self.minutes())
+            self.interval_text.set(str(self.refresh_minutes.get()))
             self.user_edited = bool(payload.get("user_edited"))
             self.unit = payload.get("unit") or "dollars_per_gallon"
             self.typed_regular.set(payload.get("typed_regular") or "")

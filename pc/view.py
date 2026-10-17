@@ -9,16 +9,21 @@ from tkinter import ttk
 
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-PAPER_RGB = (231, 225, 216)
-SHEET_RGB = (251, 250, 247)
-INK_RGB = (36, 31, 27)
-MUTED_RGB = (125, 117, 108)
-LINE_RGB = (217, 209, 198)
-QUIET_HOVER_RGB = (243, 239, 232)
-SOLID_HOVER_RGB = (58, 51, 45)
-ACCENT_RGB = (157, 70, 56)
-WHITE_RGB = (255, 255, 255)
-DISABLED_RGB = (236, 231, 224)
+NIGHT_TOP = (10, 12, 16)
+NIGHT_BOTTOM = (22, 26, 32)
+PAPER_RGB = NIGHT_TOP
+SHEET_RGB = (42, 48, 56)
+INK_RGB = (232, 236, 241)
+MUTED_RGB = (154, 164, 176)
+LINE_RGB = (86, 98, 112)
+FIELD_RGB = (16, 20, 26)
+QUIET_RGB = (34, 42, 52)
+QUIET_HOVER_RGB = (48, 58, 70)
+SOLID_RGB = (220, 228, 236)
+SOLID_HOVER_RGB = (238, 243, 247)
+SOLID_TEXT = (14, 16, 20)
+ACCENT_RGB = (146, 186, 216)
+DISABLED_RGB = (38, 44, 52)
 
 RADIUS = 8
 CONTROL = 40
@@ -35,7 +40,8 @@ INK = _hex(INK_RGB)
 MUTED = _hex(MUTED_RGB)
 LINE = _hex(LINE_RGB)
 ACCENT = _hex(ACCENT_RGB)
-WHITE = _hex(WHITE_RGB)
+FIELD = _hex(FIELD_RGB)
+WHITE = FIELD
 
 _FONTS: dict[int, ImageFont.ImageFont] = {}
 
@@ -48,6 +54,32 @@ def _face(size: int) -> ImageFont.ImageFont:
     face = ImageFont.truetype(str(path), size) if path.is_file() else ImageFont.load_default()
     _FONTS[size] = face
     return face
+
+
+def _vertical(width: int, height: int, top: tuple[int, int, int], bottom: tuple[int, int, int]) -> Image.Image:
+    height = max(height, 1)
+    width = max(width, 1)
+    column = Image.new("RGB", (1, height))
+    pixels = column.load()
+    last = max(height - 1, 1)
+    for y in range(height):
+        pixels[0, y] = tuple(int(top[i] + (bottom[i] - top[i]) * (y / last)) for i in range(3))
+    return column.resize((width, height), Image.Resampling.BILINEAR)
+
+
+def _glass(width: int, height: int, wash: Image.Image, origin: tuple[int, int]) -> Image.Image:
+    scale = 3
+    crop = wash.crop((origin[0], origin[1], origin[0] + width, origin[1] + height)).convert("RGBA")
+    big = crop.resize((width * scale, height * scale), Image.Resampling.BILINEAR)
+    veil = Image.new("RGBA", big.size, (0, 0, 0, 0))
+    ImageDraw.Draw(veil).rounded_rectangle(
+        (scale, scale, big.width - scale - 1, big.height - scale - 1),
+        radius=RADIUS * scale,
+        fill=(255, 255, 255, 30),
+        outline=(255, 255, 255, 78),
+        width=scale,
+    )
+    return Image.alpha_composite(big, veil).resize((width, height), Image.Resampling.LANCZOS)
 
 
 def _rounded(width: int, height: int, fill: tuple[int, int, int], outline: tuple[int, int, int] | None) -> Image.Image:
@@ -79,12 +111,15 @@ class Sheet(tk.Frame):
 
     def _redraw(self, _event=None) -> None:
         width, height = self.winfo_width(), self.winfo_height()
-        if width < 40 or height < 40 or (width, height) == self._size:
+        page = self.master
+        wash = _page_wash(page)
+        if width < 40 or height < 40 or wash is None:
             return
-        self._size = (width, height)
-        plate = Image.new("RGB", (width, height), PAPER_RGB)
-        sprite = _rounded(width, height, SHEET_RGB, LINE_RGB)
-        plate.paste(sprite, (0, 0), sprite)
+        origin = (max(0, self.winfo_x()), max(0, self.winfo_y()))
+        if (width, height, origin) == self._size:
+            return
+        self._size = (width, height, origin)
+        plate = _glass(width, height, wash, origin)
         self._photo = ImageTk.PhotoImage(plate)
         self.chrome.configure(image=self._photo)
         self.chrome.lower(self.body)
@@ -135,10 +170,10 @@ class Command(tk.Label):
         if self._state == "disabled":
             fill, ink, edge = DISABLED_RGB, MUTED_RGB, LINE_RGB
         elif self._kind == "solid":
-            fill = SOLID_HOVER_RGB if self._hover else INK_RGB
-            ink, edge = (247, 244, 239), fill
+            fill = SOLID_HOVER_RGB if self._hover else SOLID_RGB
+            ink, edge = SOLID_TEXT, fill
         else:
-            fill = QUIET_HOVER_RGB if self._hover else WHITE_RGB
+            fill = QUIET_HOVER_RGB if self._hover else QUIET_RGB
             ink, edge = INK_RGB, LINE_RGB
         plate = Image.new("RGBA", (width, height), SHEET_RGB + (255,))
         ImageDraw.Draw(plate).rounded_rectangle(
@@ -195,9 +230,9 @@ class Field(tk.Frame):
         if width < 20 or (width, height, self._focused) == self._size:
             return
         self._size = (width, height, self._focused)
-        edge = INK_RGB if self._focused else LINE_RGB
+        edge = ACCENT_RGB if self._focused else LINE_RGB
         plate = Image.new("RGB", (width, height), SHEET_RGB)
-        sprite = _rounded(width, height, WHITE_RGB, edge)
+        sprite = _rounded(width, height, FIELD_RGB, edge)
         plate.paste(sprite, (0, 0), sprite)
         self._photo = ImageTk.PhotoImage(plate)
         self.chrome.configure(image=self._photo)
@@ -209,13 +244,13 @@ def _style() -> None:
     style.theme_use("clam")
     style.configure(
         "Gas.TCombobox",
-        fieldbackground=WHITE,
-        background=WHITE,
+        fieldbackground=FIELD,
+        background=FIELD,
         foreground=INK,
         arrowcolor=INK,
-        bordercolor=WHITE,
-        lightcolor=WHITE,
-        darkcolor=WHITE,
+        bordercolor=FIELD,
+        lightcolor=FIELD,
+        darkcolor=FIELD,
         borderwidth=0,
         padding=0,
         relief="flat",
@@ -223,20 +258,20 @@ def _style() -> None:
     )
     style.map(
         "Gas.TCombobox",
-        fieldbackground=[("readonly", WHITE)],
+        fieldbackground=[("readonly", FIELD)],
         foreground=[("readonly", INK)],
-        selectbackground=[("readonly", WHITE)],
+        selectbackground=[("readonly", FIELD)],
         selectforeground=[("readonly", INK)],
     )
     style.configure(
         "Gas.TSpinbox",
-        fieldbackground=WHITE,
-        background=WHITE,
+        fieldbackground=FIELD,
+        background=FIELD,
         foreground=INK,
         arrowcolor=INK,
-        bordercolor=WHITE,
-        lightcolor=WHITE,
-        darkcolor=WHITE,
+        bordercolor=FIELD,
+        lightcolor=FIELD,
+        darkcolor=FIELD,
         borderwidth=0,
         padding=0,
         arrowsize=12,
@@ -246,7 +281,7 @@ def _style() -> None:
     style.configure(
         "Gas.Horizontal.TScale",
         background=SHEET,
-        troughcolor=_hex(LINE_RGB),
+        troughcolor="#2a313b",
         borderwidth=0,
         sliderthickness=12,
         sliderrelief="flat",
@@ -293,21 +328,38 @@ def _combo(parent, variable) -> tuple[Field, ttk.Combobox]:
     return shell, combo
 
 
-def _spin(parent, variable, command) -> tuple[Field, ttk.Spinbox]:
-    shell = Field(parent)
-    shell.configure(width=108)
-    spin = ttk.Spinbox(
-        shell,
-        from_=15,
-        to=240,
+def _minutes_entry(parent, variable) -> tk.Entry:
+    entry = tk.Entry(
+        parent,
         textvariable=variable,
-        width=4,
-        command=command,
-        style="Gas.TSpinbox",
+        width=6,
+        relief="flat",
+        bd=0,
+        bg=FIELD,
+        fg=INK,
+        insertbackground=INK,
+        highlightthickness=1,
+        highlightbackground=_hex(LINE_RGB),
+        highlightcolor=ACCENT,
         font=("Segoe UI", 13),
+        justify="center",
     )
-    shell.mount(spin)
-    return shell, spin
+    return entry
+
+
+def _page_wash(page: tk.Frame) -> Image.Image | None:
+    width, height = page.winfo_width(), page.winfo_height()
+    if width < 40 or height < 40:
+        return None
+    current = getattr(page, "_wash_image", None)
+    if current is not None and current.size == (width, height):
+        return current
+    image = _vertical(width, height, NIGHT_TOP, NIGHT_BOTTOM)
+    page._wash_image = image
+    page._wash_photo = ImageTk.PhotoImage(image)
+    page.backdrop.configure(image=page._wash_photo)
+    page.backdrop.lower()
+    return image
 
 
 def _heading(parent, title: str, version: str) -> None:
@@ -341,8 +393,12 @@ def _page(app, filler) -> tk.Frame:
     page = tk.Frame(app.shell, bg=PAPER, highlightthickness=0, bd=0)
     page.grid_rowconfigure(0, weight=1)
     page.grid_columnconfigure(0, weight=1)
+    backdrop = tk.Label(page, bd=0, highlightthickness=0, bg=PAPER)
+    backdrop.place(x=0, y=0, relwidth=1, relheight=1)
+    page.backdrop = backdrop
     sheet = Sheet(page)
     sheet.grid(row=0, column=0, sticky="nsew", padx=16, pady=16)
+    backdrop.lower()
     filler(app, sheet.body)
     return page
 
@@ -463,12 +519,12 @@ def _form(app, form: tk.Frame) -> None:
     Command(city_actions, "Clear", app.clear_search, kind="quiet").pack(side="left", padx=(8, 0))
 
     _text(form, "Update every", 13).grid(row=1, column=0, sticky="w", padx=(0, 12), pady=6)
-    every, app.interval_box = _spin(form, app.refresh_minutes, app._commit_interval)
-    app.interval_box.bind("<FocusOut>", lambda _event: app._commit_interval())
-    app.interval_box.bind("<Return>", lambda _event: app._commit_interval())
     gap = tk.Frame(form, bg=SHEET, highlightthickness=0, bd=0)
     gap.grid(row=1, column=1, sticky="w", pady=6)
-    every.pack(in_=gap, side="left")
+    app.interval_box = _minutes_entry(gap, app.interval_text)
+    app.interval_box.pack(side="left", ipady=6, ipadx=8)
+    app.interval_box.bind("<FocusOut>", lambda _event: app._commit_interval())
+    app.interval_box.bind("<Return>", lambda _event: app._commit_interval())
     _text(gap, "minutes", 12, MUTED).pack(side="left", padx=(8, 0))
 
     _text(form, "Regular", 13).grid(row=2, column=0, sticky="w", padx=(0, 12), pady=6)
