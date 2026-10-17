@@ -33,7 +33,7 @@ from prices import PriceError, Lookup, average, format_display, lookup_address
 from uploader import UploadError, upload_sketch
 from view import apply_scale, build as build_view, show as show_page
 
-APP_VERSION = "1.8"
+APP_VERSION = "1.9"
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "gas_sign_config.json"
 UNIT_LABELS = {
@@ -149,10 +149,10 @@ class App:
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
         width = min(1100, max(960, screen_w - 80))
-        height = min(760, max(700, screen_h - 160))
+        height = min(820, max(760, screen_h - 160))
         x = max(0, (screen_w - width) // 2)
         y = max(0, (screen_h - height) // 6)
-        self.root.minsize(960, 700)
+        self.root.minsize(960, 760)
         self.root.geometry(f"{width}x{height}+{x}+{y}")
         self.root.resizable(True, True)
 

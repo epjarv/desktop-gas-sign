@@ -10,9 +10,8 @@ from tkinter import ttk
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 NIGHT_TOP = (8, 16, 34)
-NIGHT_BOTTOM = (14, 28, 52)
 PAPER_RGB = NIGHT_TOP
-SHEET_RGB = (16, 32, 58)
+SHEET_RGB = PAPER_RGB
 INK_RGB = (232, 238, 245)
 MUTED_RGB = (158, 176, 198)
 LINE_RGB = (48, 74, 108)
@@ -27,7 +26,6 @@ DISABLED_RGB = (22, 34, 52)
 
 RADIUS = 8
 CONTROL = 40
-PAD = 20
 
 
 def _hex(color: tuple[int, int, int]) -> str:
@@ -56,32 +54,6 @@ def _face(size: int) -> ImageFont.ImageFont:
     return face
 
 
-def _vertical(width: int, height: int, top: tuple[int, int, int], bottom: tuple[int, int, int]) -> Image.Image:
-    height = max(height, 1)
-    width = max(width, 1)
-    column = Image.new("RGB", (1, height))
-    pixels = column.load()
-    last = max(height - 1, 1)
-    for y in range(height):
-        pixels[0, y] = tuple(int(top[i] + (bottom[i] - top[i]) * (y / last)) for i in range(3))
-    return column.resize((width, height), Image.Resampling.BILINEAR)
-
-
-def _glass(width: int, height: int, wash: Image.Image, origin: tuple[int, int]) -> Image.Image:
-    scale = 3
-    crop = wash.crop((origin[0], origin[1], origin[0] + width, origin[1] + height)).convert("RGBA")
-    big = crop.resize((width * scale, height * scale), Image.Resampling.BILINEAR)
-    veil = Image.new("RGBA", big.size, (0, 0, 0, 0))
-    ImageDraw.Draw(veil).rounded_rectangle(
-        (scale, scale, big.width - scale - 1, big.height - scale - 1),
-        radius=RADIUS * scale,
-        fill=(186, 214, 255, 28),
-        outline=(198, 222, 255, 72),
-        width=scale,
-    )
-    return Image.alpha_composite(big, veil).resize((width, height), Image.Resampling.LANCZOS)
-
-
 def _rounded(width: int, height: int, fill: tuple[int, int, int], outline: tuple[int, int, int] | None) -> Image.Image:
     scale = 3
     image = Image.new("RGBA", (width * scale, height * scale), (0, 0, 0, 0))
@@ -95,34 +67,6 @@ def _rounded(width: int, height: int, fill: tuple[int, int, int], outline: tuple
         width=scale,
     )
     return image.resize((width, height), Image.Resampling.LANCZOS)
-
-
-class Sheet(tk.Frame):
-    def __init__(self, parent) -> None:
-        super().__init__(parent, bg=PAPER, highlightthickness=0, bd=0)
-        self._photo: ImageTk.PhotoImage | None = None
-        self._size = (0, 0)
-        self.chrome = tk.Label(self, bd=0, highlightthickness=0, bg=PAPER)
-        self.chrome.place(x=0, y=0, relwidth=1, relheight=1)
-        self.body = tk.Frame(self, bg=SHEET, highlightthickness=0, bd=0)
-        self.body.pack(fill="both", expand=True, padx=PAD, pady=PAD)
-        self.chrome.lower(self.body)
-        self.bind("<Configure>", self._redraw)
-
-    def _redraw(self, _event=None) -> None:
-        width, height = self.winfo_width(), self.winfo_height()
-        page = self.master
-        wash = _page_wash(page)
-        if width < 40 or height < 40 or wash is None:
-            return
-        origin = (max(0, self.winfo_x()), max(0, self.winfo_y()))
-        if (width, height, origin) == self._size:
-            return
-        self._size = (width, height, origin)
-        plate = _glass(width, height, wash, origin)
-        self._photo = ImageTk.PhotoImage(plate)
-        self.chrome.configure(image=self._photo)
-        self.chrome.lower(self.body)
 
 
 class Command(tk.Label):
@@ -347,24 +291,9 @@ def _minutes_entry(parent, variable) -> tk.Entry:
     return entry
 
 
-def _page_wash(page: tk.Frame) -> Image.Image | None:
-    width, height = page.winfo_width(), page.winfo_height()
-    if width < 40 or height < 40:
-        return None
-    current = getattr(page, "_wash_image", None)
-    if current is not None and current.size == (width, height):
-        return current
-    image = _vertical(width, height, NIGHT_TOP, NIGHT_BOTTOM)
-    page._wash_image = image
-    page._wash_photo = ImageTk.PhotoImage(image)
-    page.backdrop.configure(image=page._wash_photo)
-    page.backdrop.lower()
-    return image
-
-
 def _heading(parent, title: str, version: str) -> None:
     row = tk.Frame(parent, bg=SHEET, highlightthickness=0, bd=0)
-    row.grid(row=0, column=0, sticky="ew", pady=(0, 16))
+    row.grid(row=0, column=0, sticky="ew", pady=(0, 10))
     row.grid_columnconfigure(0, weight=1)
     _text(row, title, 22).grid(row=0, column=0, sticky="w")
     _text(row, version, 12, MUTED).grid(row=0, column=1, sticky="e")
@@ -393,13 +322,9 @@ def _page(app, filler) -> tk.Frame:
     page = tk.Frame(app.shell, bg=PAPER, highlightthickness=0, bd=0)
     page.grid_rowconfigure(0, weight=1)
     page.grid_columnconfigure(0, weight=1)
-    backdrop = tk.Label(page, bd=0, highlightthickness=0, bg=PAPER)
-    backdrop.place(x=0, y=0, relwidth=1, relheight=1)
-    page.backdrop = backdrop
-    sheet = Sheet(page)
-    sheet.grid(row=0, column=0, sticky="nsew", padx=16, pady=16)
-    backdrop.lower()
-    filler(app, sheet.body)
+    body = tk.Frame(page, bg=PAPER, highlightthickness=0, bd=0)
+    body.grid(row=0, column=0, sticky="nsew", padx=28, pady=16)
+    filler(app, body)
     return page
 
 
@@ -461,13 +386,17 @@ def _upload(app, body: tk.Frame) -> None:
     app.continue_button = Command(body, "Continue", app.finish_setup)
 
 
+def _section(parent, title: str, row: int) -> None:
+    _text(parent, title, 11, MUTED).grid(row=row, column=0, columnspan=3, sticky="w", pady=(12, 2))
+
+
 def _prices(app, body: tk.Frame) -> None:
     body.grid_columnconfigure(0, weight=1)
-    body.grid_rowconfigure(7, weight=1)
+    body.grid_rowconfigure(6, weight=1)
     _heading(body, "Prices", app.version)
 
-    figures = tk.Frame(body, bg=SHEET, highlightthickness=0, bd=0)
-    figures.grid(row=1, column=0, sticky="w")
+    figures = tk.Frame(body, bg=PAPER, highlightthickness=0, bd=0)
+    figures.grid(row=1, column=0, sticky="w", pady=(4, 0))
     app._prices.append(_price(app, figures, "Regular", app.regular_show))
     app._prices.append(_price(app, figures, "Diesel", app.diesel_show))
     app._prices[1].pack(side="left", padx=(48, 0))
@@ -477,16 +406,13 @@ def _prices(app, body: tk.Frame) -> None:
     app.note_label.grid(row=3, column=0, sticky="ew", pady=(2, 0))
     _text(body, "", 12, MUTED, app.unit_show).grid(row=4, column=0, sticky="w")
 
-    rule = tk.Frame(body, bg=_hex(LINE_RGB), height=1, highlightthickness=0, bd=0)
-    rule.grid(row=5, column=0, sticky="ew", pady=(16, 16))
-
-    form = tk.Frame(body, bg=SHEET, highlightthickness=0, bd=0)
-    form.grid(row=6, column=0, sticky="ew")
+    form = tk.Frame(body, bg=PAPER, highlightthickness=0, bd=0)
+    form.grid(row=5, column=0, sticky="ew", pady=(8, 0))
     form.grid_columnconfigure(1, weight=1)
     _form(app, form)
 
-    foot = tk.Frame(body, bg=SHEET, highlightthickness=0, bd=0)
-    foot.grid(row=8, column=0, sticky="ew", pady=(20, 0))
+    foot = tk.Frame(body, bg=PAPER, highlightthickness=0, bd=0)
+    foot.grid(row=7, column=0, sticky="ew", pady=(12, 0))
     app.wiring_link = _text(foot, "Wiring", 13, ACCENT)
     app.wiring_link.configure(cursor="hand2")
     app.wiring_link.pack(anchor="w")
@@ -508,52 +434,55 @@ def _price(app, parent, caption: str, variable) -> tk.Frame:
 
 
 def _form(app, form: tk.Frame) -> None:
-    _text(form, "City", 13).grid(row=0, column=0, sticky="w", padx=(0, 12), pady=6)
+    _section(form, "Lookup", 0)
+    _text(form, "City", 13).grid(row=1, column=0, sticky="w", padx=(0, 16), pady=4)
     city, app.address_entry = _entry(form, app.address)
-    city.grid(row=0, column=1, sticky="ew", pady=6)
+    city.grid(row=1, column=1, sticky="ew", pady=4)
     app.address_entry.bind("<Return>", lambda _event: app.start_lookup(True))
-    city_actions = tk.Frame(form, bg=SHEET, highlightthickness=0, bd=0)
-    city_actions.grid(row=0, column=2, sticky="w", padx=(8, 0), pady=6)
+    city_actions = tk.Frame(form, bg=PAPER, highlightthickness=0, bd=0)
+    city_actions.grid(row=1, column=2, sticky="w", padx=(12, 0), pady=4)
     app.lookup_button = Command(city_actions, "Look up", lambda: app.start_lookup(True))
     app.lookup_button.pack(side="left")
     Command(city_actions, "Clear", app.clear_search, kind="quiet").pack(side="left", padx=(8, 0))
 
-    _text(form, "Update every", 13).grid(row=1, column=0, sticky="w", padx=(0, 12), pady=6)
-    gap = tk.Frame(form, bg=SHEET, highlightthickness=0, bd=0)
-    gap.grid(row=1, column=1, sticky="w", pady=6)
+    _text(form, "Update every", 13).grid(row=2, column=0, sticky="w", padx=(0, 16), pady=4)
+    gap = tk.Frame(form, bg=PAPER, highlightthickness=0, bd=0)
+    gap.grid(row=2, column=1, sticky="w", pady=4)
     app.interval_box = _minutes_entry(gap, app.interval_text)
     app.interval_box.pack(side="left", ipady=6, ipadx=8)
     app.interval_box.bind("<FocusOut>", lambda _event: app._commit_interval())
     app.interval_box.bind("<Return>", lambda _event: app._commit_interval())
     _text(gap, "minutes", 12, MUTED).pack(side="left", padx=(8, 0))
 
-    _text(form, "Regular", 13).grid(row=2, column=0, sticky="w", padx=(0, 12), pady=6)
-    prices = tk.Frame(form, bg=SHEET, highlightthickness=0, bd=0)
-    prices.grid(row=2, column=1, sticky="ew", pady=6)
+    _section(form, "Manual prices", 3)
+    _text(form, "Regular", 13).grid(row=4, column=0, sticky="w", padx=(0, 16), pady=4)
+    prices = tk.Frame(form, bg=PAPER, highlightthickness=0, bd=0)
+    prices.grid(row=4, column=1, sticky="ew", pady=4)
     prices.grid_columnconfigure(0, weight=1)
     prices.grid_columnconfigure(2, weight=1)
     regular, _regular_entry = _entry(prices, app.typed_regular)
     regular.grid(row=0, column=0, sticky="ew")
-    _text(prices, "Diesel", 13).grid(row=0, column=1, sticky="w", padx=(12, 8))
+    _text(prices, "Diesel", 13).grid(row=0, column=1, sticky="w", padx=(16, 8))
     diesel, _diesel_entry = _entry(prices, app.typed_diesel)
     diesel.grid(row=0, column=2, sticky="ew")
-    Command(form, "Set prices", app.set_prices).grid(row=2, column=2, sticky="w", padx=(8, 0), pady=6)
+    Command(form, "Set prices", app.set_prices).grid(row=4, column=2, sticky="w", padx=(12, 0), pady=4)
 
-    _text(form, "Port", 13).grid(row=3, column=0, sticky="w", padx=(0, 12), pady=6)
+    _section(form, "Sign", 5)
+    _text(form, "Port", 13).grid(row=6, column=0, sticky="w", padx=(0, 16), pady=4)
     port, app.port_combo = _combo(form, app.port_label)
-    port.grid(row=3, column=1, sticky="ew", pady=6)
-    port_actions = tk.Frame(form, bg=SHEET, highlightthickness=0, bd=0)
-    port_actions.grid(row=3, column=2, sticky="w", padx=(8, 0), pady=6)
+    port.grid(row=6, column=1, sticky="ew", pady=4)
+    port_actions = tk.Frame(form, bg=PAPER, highlightthickness=0, bd=0)
+    port_actions.grid(row=6, column=2, sticky="w", padx=(12, 0), pady=4)
     Command(port_actions, "Refresh", app.refresh_ports, kind="quiet").pack(side="left")
     app.connect_button = Command(port_actions, "Connect", app.on_connect_clicked)
     app.connect_button.pack(side="left", padx=(8, 0))
 
     link = _wrap(app, _text(form, "", 13, variable=app.link_status))
-    link.grid(row=4, column=1, columnspan=2, sticky="ew", pady=(2, 6))
+    link.grid(row=7, column=1, columnspan=2, sticky="ew", pady=(2, 8))
 
-    _text(form, "Brightness", 13).grid(row=5, column=0, sticky="w", padx=(0, 12), pady=6)
-    bright = tk.Frame(form, bg=SHEET, highlightthickness=0, bd=0)
-    bright.grid(row=5, column=1, columnspan=2, sticky="ew", pady=6)
+    _text(form, "Brightness", 13).grid(row=8, column=0, sticky="w", padx=(0, 16), pady=4)
+    bright = tk.Frame(form, bg=PAPER, highlightthickness=0, bd=0)
+    bright.grid(row=8, column=1, columnspan=2, sticky="ew", pady=4)
     scale = ttk.Scale(
         bright,
         from_=0,
