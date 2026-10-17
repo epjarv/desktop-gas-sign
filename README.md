@@ -4,7 +4,7 @@
 
 Desktop gas sign.
 
-Version 1.2.
+Version 1.3.
 
 This program puts fuel prices on your desk sign.
 
@@ -36,8 +36,11 @@ People who want to change it can fork the repository.
 
 ## Bill of materials
 
-- Two TM1637 4-digit 7-segment displays. The decimal points must be on the digits. Do not use a clock module that only has a colon. One green and one red is fine. Green sits on top in the case.
-- Arduino Pro Micro, 5V / 16 MHz.
+- Green TM1637 display: https://www.aliexpress.com/item/1005007367688224.html
+- Red TM1637 display: https://www.aliexpress.com/item/1005007367688224.html
+  Both colors are the same listing.
+  Use 4-digit displays with decimal points on the digits, not a clock module that only has a colon. Green sits on top in the case.
+- Arduino Pro Micro, 5V / 16 MHz: https://www.aliexpress.com/item/1005008228645771.html
 - A USB-C data cable that fits the Pro Micro. It must carry data. A charge-only cable will not work, and the sign will look like it failed.
 - Jumper wires.
 

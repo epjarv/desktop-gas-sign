@@ -32,7 +32,7 @@ except ImportError:
 from prices import PriceError, Lookup, average, format_display, lookup_address
 from uploader import UploadError, upload_sketch
 
-APP_VERSION = "1.2"
+APP_VERSION = "1.3"
 FONT_BODY = ("Segoe UI", 13)
 FONT_SECTION = ("Segoe UI", 16)
 FONT_PRICE = ("Segoe UI", 36)
