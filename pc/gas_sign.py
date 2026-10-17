@@ -32,7 +32,7 @@ except ImportError:
 from prices import PriceError, Lookup, average, format_display, lookup_address
 from uploader import UploadError, upload_sketch
 
-APP_VERSION = "1.3"
+APP_VERSION = "1.4"
 FONT_BODY = ("Segoe UI", 13)
 FONT_SECTION = ("Segoe UI", 16)
 FONT_PRICE = ("Segoe UI", 36)
@@ -216,11 +216,13 @@ class App:
         self._build_prices()
 
     def _apply_style(self) -> None:
-        paper = "#f3f0e8"
-        card = "#fbf9f4"
-        ink = "#24302a"
-        muted = "#5c675f"
-        green = "#1f6b45"
+        paper = "#2a2e2c"
+        card = "#363c39"
+        field = "#242826"
+        ink = "#f4f1ea"
+        muted = "#c4bfb4"
+        amber = "#e6a817"
+        quiet = "#46504c"
         self._paper = paper
         self._card = card
         style = ttk.Style()
@@ -237,34 +239,91 @@ class App:
         style.configure("CardMuted.TLabel", background=card, foreground=muted, font=FONT_BODY)
         style.configure("WireHead.TLabel", background=card, foreground=ink, font=(FONT_BODY[0], FONT_BODY[1], "bold"))
         style.configure("Big.TLabel", background=card, foreground=ink, font=(FONT_PRICE[0], FONT_PRICE[1], "bold"))
-        style.configure("TEntry", fieldbackground="#ffffff", padding=8, font=FONT_BODY)
-        style.configure("TCombobox", fieldbackground="#ffffff", padding=6, font=FONT_BODY)
-        style.configure("TSpinbox", fieldbackground="#ffffff", padding=6, font=FONT_BODY)
-        style.configure("TScale", background=card)
+        style.configure(
+            "TEntry",
+            fieldbackground=field,
+            foreground=ink,
+            insertcolor=ink,
+            bordercolor=field,
+            lightcolor=field,
+            darkcolor=field,
+            padding=8,
+            font=FONT_BODY,
+        )
+        style.configure(
+            "TCombobox",
+            fieldbackground=field,
+            foreground=ink,
+            bordercolor=field,
+            lightcolor=field,
+            darkcolor=field,
+            arrowcolor=ink,
+            padding=6,
+            font=FONT_BODY,
+        )
+        style.map(
+            "TCombobox",
+            fieldbackground=[("readonly", field)],
+            foreground=[("readonly", ink)],
+            selectbackground=[("readonly", field)],
+            selectforeground=[("readonly", ink)],
+        )
+        style.configure(
+            "TSpinbox",
+            fieldbackground=field,
+            foreground=ink,
+            insertcolor=ink,
+            bordercolor=field,
+            lightcolor=field,
+            darkcolor=field,
+            arrowcolor=ink,
+            padding=6,
+            font=FONT_BODY,
+        )
+        style.configure("TScale", background=card, troughcolor=field)
         style.configure(
             "TButton",
             font=FONT_BODY,
             padding=(16, 10),
-            background=card,
+            background=quiet,
             foreground=ink,
-            borderwidth=1,
+            borderwidth=0,
+            relief="flat",
             focusthickness=0,
+            focuscolor=quiet,
+            lightcolor=quiet,
+            darkcolor=quiet,
+            bordercolor=quiet,
         )
-        style.map("TButton", background=[("pressed", "#e6e0d4"), ("active", "#ffffff")])
+        style.map(
+            "TButton",
+            background=[("pressed", "#3a403d"), ("active", "#55605b"), ("disabled", "#3a403d")],
+            foreground=[("disabled", "#8d887f")],
+            lightcolor=[("pressed", "#3a403d"), ("active", "#55605b")],
+            darkcolor=[("pressed", "#3a403d"), ("active", "#55605b")],
+            bordercolor=[("pressed", "#3a403d"), ("active", "#55605b")],
+        )
         style.configure(
             "Accent.TButton",
             font=FONT_BODY,
             padding=(18, 10),
-            background=green,
-            foreground="#ffffff",
+            background=amber,
+            foreground="#1c1914",
             borderwidth=0,
+            relief="flat",
             focusthickness=0,
-            focuscolor=green,
+            focuscolor=amber,
+            lightcolor=amber,
+            darkcolor=amber,
+            bordercolor=amber,
         )
         style.map(
             "Accent.TButton",
-            background=[("pressed", "#154e32"), ("active", "#175636"), ("disabled", "#b7c9be")],
-            foreground=[("disabled", "#f7f6f3")],
+            background=[("pressed", "#c48c0c"), ("active", "#f0bc3a"), ("disabled", "#6d6244")],
+            foreground=[("disabled", "#2a2e2c")],
+            lightcolor=[("pressed", "#c48c0c"), ("active", "#f0bc3a"), ("disabled", "#6d6244")],
+            darkcolor=[("pressed", "#c48c0c"), ("active", "#f0bc3a"), ("disabled", "#6d6244")],
+            bordercolor=[("pressed", "#c48c0c"), ("active", "#f0bc3a"), ("disabled", "#6d6244")],
         )
 
     def _section(self, parent, title: str) -> ttk.Frame:
@@ -415,7 +474,7 @@ class App:
         self.wiring_link = tk.Label(
             page,
             text="Wiring",
-            fg="#1f6b45",
+            fg="#c4bfb4",
             bg=self._paper,
             cursor="hand2",
             font=(FONT_BODY[0], FONT_BODY[1], "underline"),
