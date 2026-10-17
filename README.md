@@ -4,7 +4,7 @@
 
 Desktop gas sign.
 
-Version 1.1.
+Version 1.2.
 
 This program puts fuel prices on your desk sign.
 
@@ -22,7 +22,8 @@ Or type your own regular and diesel prices and click Set prices.
 
 Click Connect so the sign can show the numbers.
 Closing the window does not stop the program.
-It keeps updating prices in the system tray about every 30 minutes.
+It keeps updating prices in the system tray.
+Update every is on the price page. The usual choice is 30 minutes.
 Right-click the tray icon and choose Quit to stop.
 
 ## The code
