@@ -4,6 +4,8 @@
 
 Desktop gas sign.
 
+Version 1.1.
+
 This program puts fuel prices on your desk sign.
 
 ## Start here

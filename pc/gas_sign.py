@@ -32,6 +32,7 @@ except ImportError:
 from prices import PriceError, Lookup, average, format_display, lookup_address
 from uploader import UploadError, upload_sketch
 
+APP_VERSION = "1.1"
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "gas_sign_config.json"
 UNIT_LABELS = {
@@ -125,7 +126,7 @@ def first_line(text: str) -> str:
 class App:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("Desktop Gas Sign")
+        self.root.title(f"Desktop Gas Sign {APP_VERSION}")
         self.root.minsize(640, 640)
         self.root.geometry("760x740")
 
@@ -215,7 +216,6 @@ class App:
         style = ttk.Style()
         style.theme_use("clam")
         self.root.configure(bg=paper)
-        self.root.option_add("*Font", "Segoe UI 12")
         style.configure(".", background=paper, foreground=ink, font=("Segoe UI", 12))
         style.configure("TFrame", background=paper)
         style.configure("Card.TFrame", background=card)
