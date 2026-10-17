@@ -9,21 +9,21 @@ from tkinter import ttk
 
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-NIGHT_TOP = (10, 12, 16)
-NIGHT_BOTTOM = (22, 26, 32)
+NIGHT_TOP = (8, 16, 34)
+NIGHT_BOTTOM = (14, 28, 52)
 PAPER_RGB = NIGHT_TOP
-SHEET_RGB = (42, 48, 56)
-INK_RGB = (232, 236, 241)
-MUTED_RGB = (154, 164, 176)
-LINE_RGB = (86, 98, 112)
-FIELD_RGB = (16, 20, 26)
-QUIET_RGB = (34, 42, 52)
-QUIET_HOVER_RGB = (48, 58, 70)
-SOLID_RGB = (220, 228, 236)
-SOLID_HOVER_RGB = (238, 243, 247)
-SOLID_TEXT = (14, 16, 20)
-ACCENT_RGB = (146, 186, 216)
-DISABLED_RGB = (38, 44, 52)
+SHEET_RGB = (16, 32, 58)
+INK_RGB = (232, 238, 245)
+MUTED_RGB = (158, 176, 198)
+LINE_RGB = (48, 74, 108)
+FIELD_RGB = (8, 18, 38)
+QUIET_RGB = (24, 42, 72)
+QUIET_HOVER_RGB = (34, 56, 92)
+ACCENT_RGB = (72, 148, 224)
+SOLID_RGB = ACCENT_RGB
+SOLID_HOVER_RGB = (96, 168, 236)
+SOLID_TEXT = (244, 248, 252)
+DISABLED_RGB = (22, 34, 52)
 
 RADIUS = 8
 CONTROL = 40
@@ -75,8 +75,8 @@ def _glass(width: int, height: int, wash: Image.Image, origin: tuple[int, int]) 
     ImageDraw.Draw(veil).rounded_rectangle(
         (scale, scale, big.width - scale - 1, big.height - scale - 1),
         radius=RADIUS * scale,
-        fill=(255, 255, 255, 30),
-        outline=(255, 255, 255, 78),
+        fill=(186, 214, 255, 28),
+        outline=(198, 222, 255, 72),
         width=scale,
     )
     return Image.alpha_composite(big, veil).resize((width, height), Image.Resampling.LANCZOS)
@@ -281,7 +281,7 @@ def _style() -> None:
     style.configure(
         "Gas.Horizontal.TScale",
         background=SHEET,
-        troughcolor="#2a313b",
+        troughcolor=_hex((12, 24, 44)),
         borderwidth=0,
         sliderthickness=12,
         sliderrelief="flat",
@@ -337,12 +337,12 @@ def _minutes_entry(parent, variable) -> tk.Entry:
         bd=0,
         bg=FIELD,
         fg=INK,
-        insertbackground=INK,
+        insertbackground=ACCENT,
         highlightthickness=1,
         highlightbackground=_hex(LINE_RGB),
         highlightcolor=ACCENT,
-        font=("Segoe UI", 13),
         justify="center",
+        font=("Segoe UI", 13),
     )
     return entry
 
@@ -491,7 +491,7 @@ def _prices(app, body: tk.Frame) -> None:
     app.wiring_link.configure(cursor="hand2")
     app.wiring_link.pack(anchor="w")
     app.wiring_link.bind("<Button-1>", lambda _event: app.show_wiring())
-    tray = _wrap(app, _text(foot, app.tray_line, 12, MUTED))
+    tray = _wrap(app, _text(foot, "", 12, MUTED, app.tray_text))
     tray.pack(anchor="w", pady=(6, 0))
     app.footer_label = tray
 

@@ -42,10 +42,6 @@ UNIT_LABELS = {
     "pence_per_litre": "pence per litre",
 }
 UPLOAD_RETRY = "Double-tap the reset button on the board and click Upload to sign again."
-TRAY_LINE = (
-    "Closing this window keeps updating prices in the system tray about every 30 minutes. "
-    "Right-click the tray icon and choose Quit to stop."
-)
 
 
 def enable_dpi() -> None:
@@ -124,6 +120,27 @@ def first_line(text: str) -> str:
     return ""
 
 
+def clamp_minutes(value, fallback: int = 30) -> int:
+    try:
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                raise ValueError
+            number = int(text)
+        else:
+            number = int(value)
+    except (TypeError, ValueError):
+        return min(240, max(15, int(fallback)))
+    return min(240, max(15, number))
+
+
+def tray_sentence(minutes: int) -> str:
+    return (
+        f"Closing this window keeps updating prices in the system tray about every {minutes} minutes. "
+        "Right-click the tray icon and choose Quit to stop."
+    )
+
+
 class App:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -159,6 +176,7 @@ class App:
         self._last_brightness_sent: int | None = None
         self.refresh_minutes = tk.IntVar(value=30)
         self.interval_text = tk.StringVar(value="30")
+        self.tray_text = tk.StringVar(value=tray_sentence(30))
 
         self.unit = "dollars_per_gallon"
         self.regular_text = "----"
@@ -208,7 +226,7 @@ class App:
 
     def _build(self) -> None:
         self.version = APP_VERSION
-        self.tray_line = TRAY_LINE
+        self._sync_tray_text()
         self._icon_image = load_app_icon(256)
         build_view(self)
 
@@ -282,7 +300,7 @@ class App:
         self._told_tray = True
         try:
             self.icon.notify(
-                "Still running. It looks up this city about every 30 minutes. Right-click the icon and choose Quit to exit.",
+                f"Still running. It looks up this city about every {self.minutes()} minutes. Right-click the icon and choose Quit to exit.",
                 "Desktop Gas Sign",
             )
         except Exception:
@@ -683,21 +701,14 @@ class App:
         note = self.note.get().strip()
         self.status.set("" if not note or note == self.source.get() else note)
 
+    def _sync_tray_text(self) -> None:
+        self.tray_text.set(tray_sentence(self.minutes()))
+
     def _commit_interval(self) -> None:
         if self._filling:
             return
-        raw = self.interval_text.get().strip()
-        try:
-            value = int(raw)
-        except ValueError:
-            self._filling = True
-            try:
-                self.interval_text.set(str(self.refresh_minutes.get()))
-            finally:
-                self._filling = False
-            return
-        value = min(240, max(15, value))
-        previous = self.refresh_minutes.get()
+        previous = self.minutes()
+        value = clamp_minutes(self.interval_text.get(), previous)
         self._filling = True
         try:
             self.refresh_minutes.set(value)
@@ -705,15 +716,16 @@ class App:
         finally:
             self._filling = False
         self.save_config()
+        self._sync_tray_text()
         if value != previous:
             self.schedule_refresh()
 
     def minutes(self) -> int:
         try:
-            value = int(self.refresh_minutes.get())
+            current = self.refresh_minutes.get()
         except (tk.TclError, ValueError):
-            return 30
-        return min(240, max(15, value))
+            current = 30
+        return clamp_minutes(current, 30)
 
     def schedule_refresh(self) -> None:
         if self._quitting:
@@ -762,9 +774,9 @@ class App:
             self.note.set(first_line(self.summary.get()))
             self.brightness.set(int(payload.get("brightness") or 4))
             self.brightness_show.set(str(self.brightness.get()))
-            self.refresh_minutes.set(int(payload.get("refresh_minutes") or 30))
-            self.refresh_minutes.set(self.minutes())
-            self.interval_text.set(str(self.refresh_minutes.get()))
+            stored = clamp_minutes(payload.get("refresh_minutes"), 30)
+            self.refresh_minutes.set(stored)
+            self.interval_text.set(str(stored))
             self.user_edited = bool(payload.get("user_edited"))
             self.unit = payload.get("unit") or "dollars_per_gallon"
             self.typed_regular.set(payload.get("typed_regular") or "")
@@ -775,6 +787,7 @@ class App:
                 self.port_map[saved_port] = saved_port
         finally:
             self._filling = False
+        self._sync_tray_text()
 
 
 def main() -> None:
