@@ -32,10 +32,18 @@ except ImportError:
 from prices import PriceError, Lookup, average, format_display, lookup_address
 from uploader import UploadError, upload_sketch
 
-APP_VERSION = "1.4"
-FONT_BODY = ("Segoe UI", 13)
-FONT_SECTION = ("Segoe UI", 16)
-FONT_PRICE = ("Segoe UI", 36)
+APP_VERSION = "1.5"
+PAGE = "#E6E1D6"
+CARD = "#FBF9F4"
+INK = "#1C1B18"
+MUTED = "#5E5A54"
+LINE = "#D4CDBF"
+ACCENT = "#0F6B3C"
+ACCENT_HOVER = "#148248"
+ACCENT_PRESS = "#0C5530"
+SECONDARY = "#F3EEE6"
+SECONDARY_HOVER = "#E6DFD2"
+FIELD = "#FFFFFF"
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "gas_sign_config.json"
 UNIT_LABELS = {
@@ -126,12 +134,129 @@ def first_line(text: str) -> str:
     return ""
 
 
+def _round_rect(canvas: tk.Canvas, x1: int, y1: int, x2: int, y2: int, radius: int, **kwargs) -> None:
+    radius = max(0, min(radius, int((x2 - x1) / 2), int((y2 - y1) / 2)))
+    fill = kwargs.get("fill", CARD)
+    if radius <= 0:
+        canvas.create_rectangle(x1, y1, x2, y2, fill=fill, outline="")
+        return
+    canvas.create_rectangle(x1 + radius, y1, x2 - radius, y2, fill=fill, outline="")
+    canvas.create_rectangle(x1, y1 + radius, x2, y2 - radius, fill=fill, outline="")
+    canvas.create_arc(x1, y1, x1 + 2 * radius, y1 + 2 * radius, start=90, extent=90, fill=fill, outline="", style="pieslice")
+    canvas.create_arc(x2 - 2 * radius, y1, x2, y1 + 2 * radius, start=0, extent=90, fill=fill, outline="", style="pieslice")
+    canvas.create_arc(x1, y2 - 2 * radius, x1 + 2 * radius, y2, start=180, extent=90, fill=fill, outline="", style="pieslice")
+    canvas.create_arc(x2 - 2 * radius, y2 - 2 * radius, x2, y2, start=270, extent=90, fill=fill, outline="", style="pieslice")
+
+
+class Pill(tk.Canvas):
+    """Filled rounded button. configure(state=) and configure(text=) match the old buttons."""
+
+    def __init__(self, parent, text: str, command, kind: str = "primary", bg: str = CARD) -> None:
+        super().__init__(parent, height=34, width=132, highlightthickness=0, bd=0, bg=bg, cursor="hand2")
+        self._text = text
+        self._command = command
+        self._kind = kind
+        self._state = "normal"
+        self._hover = False
+        self._font = ("Segoe UI", 13)
+        self._radius = 6
+        self.bind("<Configure>", lambda _event: self._paint())
+        self.bind("<Button-1>", self._click)
+        self.bind("<Enter>", self._enter)
+        self.bind("<Leave>", self._leave)
+        self.after_idle(self._paint)
+
+    def configure(self, cnf=None, **kwargs):
+        if isinstance(cnf, dict):
+            kwargs = {**cnf, **kwargs}
+            cnf = None
+        if cnf is not None and not kwargs:
+            return super().configure(cnf)
+        changed = False
+        if "state" in kwargs:
+            self._state = kwargs.pop("state")
+            changed = True
+        if "text" in kwargs:
+            self._text = kwargs.pop("text")
+            changed = True
+        if kwargs:
+            super().configure(**kwargs)
+        if changed:
+            self.configure(cursor="arrow" if self._state == "disabled" else "hand2")
+            self._paint()
+
+    config = configure
+
+    def set_font(self, font, radius: int, height: int) -> None:
+        self._font = font
+        self._radius = radius
+        self.configure(height=height)
+
+    def _fill(self) -> str:
+        if self._state == "disabled":
+            return "#DDD7CC"
+        if self._kind == "primary":
+            if self._hover:
+                return ACCENT_HOVER
+            return ACCENT
+        return SECONDARY_HOVER if self._hover else SECONDARY
+
+    def _ink(self) -> str:
+        if self._state == "disabled":
+            return "#8E8E93"
+        return "#FFFFFF" if self._kind == "primary" else INK
+
+    def _paint(self) -> None:
+        width = max(self.winfo_width(), 2)
+        height = max(self.winfo_height(), 2)
+        self.delete("all")
+        border = self._fill() if self._kind == "primary" or self._state == "disabled" else LINE
+        _round_rect(self, 1, 1, width - 1, height - 1, self._radius, fill=border)
+        _round_rect(self, 2, 2, width - 2, height - 2, max(0, self._radius - 1), fill=self._fill())
+        self.create_text(width / 2, height / 2, text=self._text, fill=self._ink(), font=self._font)
+
+    def _click(self, _event) -> None:
+        if self._state != "disabled" and self._command is not None:
+            self._command()
+
+    def _enter(self, _event) -> None:
+        self._hover = self._state != "disabled"
+        self._paint()
+
+    def _leave(self, _event) -> None:
+        self._hover = False
+        self._paint()
+
+
+class GroupCard(tk.Frame):
+    def __init__(self, parent) -> None:
+        super().__init__(parent, bg=PAGE)
+        self.canvas = tk.Canvas(self, bg=PAGE, highlightthickness=0, bd=0)
+        self.canvas.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self.body = tk.Frame(self, bg=CARD)
+        self.body.pack(fill="both", expand=True, padx=12, pady=12)
+        tk.Misc.lower(self.canvas)
+        self.bind("<Configure>", lambda _event: self._paint())
+        self.after_idle(self._paint)
+
+    def _paint(self) -> None:
+        width = self.winfo_width()
+        height = self.winfo_height()
+        if width < 8 or height < 8:
+            return
+        self.canvas.delete("card")
+        _round_rect(self.canvas, 1, 1, width - 2, height - 2, 8, fill=LINE)
+        _round_rect(self.canvas, 2, 2, width - 3, height - 3, 7, fill=CARD)
+        tk.Misc.lower(self.canvas)
+
+
 class App:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title(f"Desktop Gas Sign {APP_VERSION}")
-        self.root.minsize(1100, 1020)
-        self.root.geometry("1160x1080")
+        self.root.minsize(1000, 740)
+        self.root.geometry("1160x820")
+        self.root.resizable(True, True)
 
         self.address = tk.StringVar()
         self.place = tk.StringVar()
@@ -200,149 +325,118 @@ class App:
             self.show_wiring()
 
     def _build(self) -> None:
-        self._wrap_labels: list[ttk.Label] = []
+        self._wrap_labels: list[tuple[tk.Label, str]] = []
+        self._roles: list[tuple[tk.Widget, str]] = []
+        self._pills: list[Pill] = []
+        self._entries: list[tk.Entry] = []
+        self._gap = 16
+        self._scale_bucket = None
         self._apply_style()
         self._window_icon = ImageTk.PhotoImage(load_app_icon(256))
         self.root.iconphoto(True, self._window_icon)
+        self.root.configure(bg=PAGE)
 
-        self.shell = ttk.Frame(self.root, padding=(32, 28))
-        self.shell.pack(fill="both", expand=True)
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+        self.shell = tk.Frame(self.root, bg=PAGE)
+        self.shell.grid(row=0, column=0, sticky="nsew")
+        self.shell.grid_rowconfigure(0, weight=1)
+        self.shell.grid_columnconfigure(0, weight=1)
 
-        self.wiring_page = ttk.Frame(self.shell)
-        self.upload_page = ttk.Frame(self.shell)
-        self.price_page = ttk.Frame(self.shell)
+        self.wiring_page = tk.Frame(self.shell, bg=PAGE)
+        self.upload_page = tk.Frame(self.shell, bg=PAGE)
+        self.price_page = tk.Frame(self.shell, bg=PAGE)
         self._build_wiring()
         self._build_upload()
         self._build_prices()
+        self._apply_scale(1120)
 
     def _apply_style(self) -> None:
-        paper = "#2a2e2c"
-        card = "#363c39"
-        field = "#242826"
-        ink = "#f4f1ea"
-        muted = "#c4bfb4"
-        amber = "#e6a817"
-        quiet = "#46504c"
-        self._paper = paper
-        self._card = card
         style = ttk.Style()
         style.theme_use("clam")
-        self.root.configure(bg=paper)
-        style.configure(".", background=paper, foreground=ink, font=FONT_BODY)
-        style.configure("TFrame", background=paper)
-        style.configure("Card.TFrame", background=card)
-        style.configure("TLabel", background=paper, foreground=ink, font=FONT_BODY)
-        style.configure("Section.TLabel", background=paper, foreground=ink, font=FONT_SECTION)
-        style.configure("Body.TLabel", background=paper, foreground=ink, font=FONT_BODY)
-        style.configure("Muted.TLabel", background=paper, foreground=muted, font=FONT_BODY)
-        style.configure("Card.TLabel", background=card, foreground=ink, font=FONT_BODY)
-        style.configure("CardMuted.TLabel", background=card, foreground=muted, font=FONT_BODY)
-        style.configure("WireHead.TLabel", background=card, foreground=ink, font=(FONT_BODY[0], FONT_BODY[1], "bold"))
-        style.configure("Big.TLabel", background=card, foreground=ink, font=(FONT_PRICE[0], FONT_PRICE[1], "bold"))
-        style.configure(
-            "TEntry",
-            fieldbackground=field,
-            foreground=ink,
-            insertcolor=ink,
-            bordercolor=field,
-            lightcolor=field,
-            darkcolor=field,
-            padding=8,
-            font=FONT_BODY,
-        )
         style.configure(
             "TCombobox",
-            fieldbackground=field,
-            foreground=ink,
-            bordercolor=field,
-            lightcolor=field,
-            darkcolor=field,
-            arrowcolor=ink,
+            fieldbackground=FIELD,
+            background=CARD,
+            foreground=INK,
+            arrowcolor=INK,
+            bordercolor=LINE,
+            lightcolor=LINE,
+            darkcolor=LINE,
             padding=6,
-            font=FONT_BODY,
         )
         style.map(
             "TCombobox",
-            fieldbackground=[("readonly", field)],
-            foreground=[("readonly", ink)],
-            selectbackground=[("readonly", field)],
-            selectforeground=[("readonly", ink)],
+            fieldbackground=[("readonly", FIELD)],
+            foreground=[("readonly", INK)],
+            selectbackground=[("readonly", FIELD)],
+            selectforeground=[("readonly", INK)],
         )
         style.configure(
             "TSpinbox",
-            fieldbackground=field,
-            foreground=ink,
-            insertcolor=ink,
-            bordercolor=field,
-            lightcolor=field,
-            darkcolor=field,
-            arrowcolor=ink,
-            padding=6,
-            font=FONT_BODY,
+            fieldbackground=FIELD,
+            foreground=INK,
+            arrowcolor=INK,
+            bordercolor=LINE,
+            lightcolor=LINE,
+            darkcolor=LINE,
+            padding=4,
         )
-        style.configure("TScale", background=card, troughcolor=field)
-        style.configure(
-            "TButton",
-            font=FONT_BODY,
-            padding=(16, 10),
-            background=quiet,
-            foreground=ink,
-            borderwidth=0,
-            relief="flat",
-            focusthickness=0,
-            focuscolor=quiet,
-            lightcolor=quiet,
-            darkcolor=quiet,
-            bordercolor=quiet,
-        )
-        style.map(
-            "TButton",
-            background=[("pressed", "#3a403d"), ("active", "#55605b"), ("disabled", "#3a403d")],
-            foreground=[("disabled", "#8d887f")],
-            lightcolor=[("pressed", "#3a403d"), ("active", "#55605b")],
-            darkcolor=[("pressed", "#3a403d"), ("active", "#55605b")],
-            bordercolor=[("pressed", "#3a403d"), ("active", "#55605b")],
-        )
-        style.configure(
-            "Accent.TButton",
-            font=FONT_BODY,
-            padding=(18, 10),
-            background=amber,
-            foreground="#1c1914",
-            borderwidth=0,
-            relief="flat",
-            focusthickness=0,
-            focuscolor=amber,
-            lightcolor=amber,
-            darkcolor=amber,
-            bordercolor=amber,
-        )
-        style.map(
-            "Accent.TButton",
-            background=[("pressed", "#c48c0c"), ("active", "#f0bc3a"), ("disabled", "#6d6244")],
-            foreground=[("disabled", "#2a2e2c")],
-            lightcolor=[("pressed", "#c48c0c"), ("active", "#f0bc3a"), ("disabled", "#6d6244")],
-            darkcolor=[("pressed", "#c48c0c"), ("active", "#f0bc3a"), ("disabled", "#6d6244")],
-            bordercolor=[("pressed", "#c48c0c"), ("active", "#f0bc3a"), ("disabled", "#6d6244")],
-        )
+        style.configure("TScale", background=CARD, troughcolor="#DDD6C8")
 
-    def _section(self, parent, title: str) -> ttk.Frame:
-        block = ttk.Frame(parent)
-        block.pack(fill="x", pady=(0, 18))
-        ttk.Label(block, text=title, style="Section.TLabel").pack(anchor="w", pady=(0, 8))
-        card = ttk.Frame(block, style="Card.TFrame", padding=(22, 18))
-        card.pack(fill="x")
-        return card
+    def _remember(self, widget: tk.Widget, role: str) -> tk.Widget:
+        self._roles.append((widget, role))
+        return widget
 
-    def _wrap(self, label: ttk.Label) -> ttk.Label:
-        self._wrap_labels.append(label)
+    def _text(self, parent, text: str, role: str, fg: str = INK, bg: str = CARD) -> tk.Label:
+        label = tk.Label(parent, text=text, fg=fg, bg=bg, anchor="w", justify="left")
+        return self._remember(label, role)
+
+    def _var_text(self, parent, variable, role: str, fg: str = INK, bg: str = CARD) -> tk.Label:
+        label = tk.Label(parent, textvariable=variable, fg=fg, bg=bg, anchor="w", justify="left")
+        return self._remember(label, role)
+
+    def _wrap(self, label: tk.Label, span: str) -> tk.Label:
+        self._wrap_labels.append((label, span))
         return label
+
+    def _entry(self, parent, variable) -> tk.Entry:
+        entry = tk.Entry(
+            parent,
+            textvariable=variable,
+            relief="flat",
+            bd=0,
+            bg=FIELD,
+            fg=INK,
+            insertbackground=INK,
+            highlightthickness=1,
+            highlightbackground=LINE,
+            highlightcolor=ACCENT,
+        )
+        self._entries.append(entry)
+        return entry
+
+    def _button(self, parent, text: str, command, kind: str = "primary") -> Pill:
+        button = Pill(parent, text, command, kind=kind, bg=parent.cget("bg"))
+        self._pills.append(button)
+        return button
+
+    def _page_title(self, page, text: str) -> None:
+        bar = tk.Frame(page, bg=PAGE)
+        bar.grid(row=0, column=0, columnspan=2, sticky="ew", padx=self._gap, pady=(self._gap, 4))
+        title = self._text(bar, text, "title", bg=PAGE)
+        title.pack(anchor="w")
 
     def _build_wiring(self) -> None:
         page = self.wiring_page
-        ttk.Label(page, text="Wire the sign", style="Section.TLabel").pack(anchor="w")
-        table = ttk.Frame(page, style="Card.TFrame", padding=(22, 18))
-        table.pack(anchor="w", fill="x", pady=(16, 0))
+        page.grid_columnconfigure(0, weight=1)
+        page.grid_rowconfigure(1, weight=1)
+        self._page_title(page, "Wire the sign")
+        card = GroupCard(page)
+        card.grid(row=1, column=0, sticky="nsew", padx=self._gap, pady=(8, 8))
+        table = card.body
+        for column in range(3):
+            table.grid_columnconfigure(column, weight=1)
         rows = (
             ("Pro Micro", "Top display", "Bottom display"),
             ("VCC", "5V", "5V"),
@@ -353,145 +447,202 @@ class App:
             ("Pin 7", "", "DIO"),
         )
         for row_index, row in enumerate(rows):
-            for column, text in enumerate(row):
-                kind = "WireHead.TLabel" if row_index == 0 else "Card.TLabel"
-                ttk.Label(table, text=text, style=kind, width=18).grid(
-                    row=row_index, column=column, sticky="w", padx=(0, 36), pady=7
-                )
-        note = ttk.Label(
-            page,
-            text="Each display has a second header. That header is the same four pins. Use one header only.",
-            style="Body.TLabel",
-            justify="left",
+            for column, cell in enumerate(row):
+                fg = MUTED if row_index == 0 else INK
+                role = "caption" if row_index == 0 else "body"
+                label = self._text(table, cell, role, fg=fg)
+                label.grid(row=row_index, column=column, sticky="ew", padx=(0, 18), pady=6)
+        note = self._wrap(
+            self._text(
+                page,
+                "Each display has a second header. That header is the same four pins. Use one header only.",
+                "body",
+                bg=PAGE,
+            ),
+            "full",
         )
-        self._wrap(note).pack(anchor="w", pady=(18, 22))
-        ttk.Button(page, text="Next", style="Accent.TButton", command=self.show_upload).pack(anchor="w")
+        note.grid(row=2, column=0, sticky="ew", padx=self._gap, pady=(4, 12))
+        self._button(page, "Next", self.show_upload).grid(row=3, column=0, sticky="w", padx=self._gap, pady=(0, self._gap))
 
     def _build_upload(self) -> None:
         page = self.upload_page
-        ttk.Label(page, text="Upload", style="Section.TLabel").pack(anchor="w")
-        card = ttk.Frame(page, style="Card.TFrame", padding=(22, 18))
-        card.pack(fill="x", pady=(16, 0))
-        ttk.Label(card, text="Plug the sign into the PC with the USB cable.", style="Card.TLabel").pack(anchor="w")
-        actions = ttk.Frame(card, style="Card.TFrame")
-        actions.pack(anchor="w", pady=(18, 0))
-        self.upload_button = ttk.Button(
-            actions, text="Upload to sign", style="Accent.TButton", command=self.start_upload
-        )
+        page.grid_columnconfigure(0, weight=1)
+        page.grid_rowconfigure(1, weight=1)
+        self._page_title(page, "Upload")
+        card = GroupCard(page)
+        card.grid(row=1, column=0, sticky="nsew", padx=self._gap, pady=(8, 8))
+        body = card.body
+        body.grid_columnconfigure(0, weight=1)
+        self._text(body, "Plug the sign into the PC with the USB cable.", "body").grid(row=0, column=0, sticky="w")
+        actions = tk.Frame(body, bg=CARD)
+        actions.grid(row=1, column=0, sticky="w", pady=(16, 0))
+        self.upload_button = self._button(actions, "Upload to sign", self.start_upload)
         self.upload_button.pack(side="left")
-        ttk.Button(actions, text="Skip", command=self.finish_setup).pack(side="left", padx=(12, 0))
-        ttk.Label(
-            card,
-            text="Choose Skip if this sign already has the program.",
-            style="CardMuted.TLabel",
-        ).pack(anchor="w", pady=(14, 0))
-        status = ttk.Label(card, textvariable=self.upload_status, style="Card.TLabel", justify="left")
-        self._wrap(status).pack(anchor="w", fill="x", pady=(16, 0))
-        self.continue_button = ttk.Button(page, text="Continue", style="Accent.TButton", command=self.finish_setup)
+        self._button(actions, "Skip", self.finish_setup, kind="secondary").pack(side="left", padx=(10, 0))
+        self._text(body, "Choose Skip if this sign already has the program.", "caption", fg=MUTED).grid(
+            row=2, column=0, sticky="w", pady=(12, 0)
+        )
+        status = self._wrap(self._var_text(body, self.upload_status, "body"), "full")
+        status.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        self.continue_button = self._button(page, "Continue", self.finish_setup)
 
     def _build_prices(self) -> None:
         page = self.price_page
-        footer = ttk.Label(page, text=TRAY_LINE, style="Muted.TLabel", justify="left")
-        self._wrap(footer).pack(side="bottom", anchor="w", pady=(8, 0))
+        page.grid_columnconfigure(0, weight=1, uniform="desk")
+        page.grid_columnconfigure(1, weight=1, uniform="desk")
+        page.grid_rowconfigure(1, weight=1)
+        page.grid_rowconfigure(2, weight=1)
+        self._page_title(page, "Prices")
+
+        current = GroupCard(page)
+        current.grid(row=1, column=0, sticky="nsew", padx=(self._gap, 8), pady=8)
+        self._fill_current(current.body)
+
+        lookup = GroupCard(page)
+        lookup.grid(row=1, column=1, sticky="nsew", padx=(8, self._gap), pady=8)
+        self._fill_lookup(lookup.body)
+
+        manual = GroupCard(page)
+        manual.grid(row=2, column=0, sticky="nsew", padx=(self._gap, 8), pady=(0, 8))
+        self._fill_manual(manual.body)
+
+        sign = GroupCard(page)
+        sign.grid(row=2, column=1, sticky="nsew", padx=(8, self._gap), pady=(0, 8))
+        self._fill_sign(sign.body)
+
+        foot = tk.Frame(page, bg=PAGE)
+        foot.grid(row=3, column=0, columnspan=2, sticky="ew", padx=self._gap, pady=(0, self._gap))
+        self.wiring_link = self._text(foot, "Wiring", "body", fg=ACCENT, bg=PAGE)
+        self.wiring_link.configure(cursor="hand2")
+        self.wiring_link.pack(anchor="w")
+        self.wiring_link.bind("<Button-1>", lambda _event: self.show_wiring())
+        footer = self._wrap(self._text(foot, TRAY_LINE, "caption", fg=MUTED, bg=PAGE), "full")
+        footer.pack(anchor="w", pady=(6, 0))
         self.footer_label = footer
 
-        lookup = self._section(page, "Price lookup")
-        city = ttk.Frame(lookup, style="Card.TFrame")
-        city.pack(fill="x")
-        ttk.Label(city, text="City", style="Card.TLabel").pack(side="left")
-        self.address_entry = ttk.Entry(city, textvariable=self.address, font=FONT_BODY)
-        self.address_entry.pack(side="left", fill="x", expand=True, padx=(12, 12))
-        self.address_entry.bind("<Return>", lambda _event: self.start_lookup(True))
-        self.lookup_button = ttk.Button(
-            city, text="Look up", style="Accent.TButton", command=lambda: self.start_lookup(True)
-        )
-        self.lookup_button.pack(side="left")
-        ttk.Button(city, text="Clear", command=self.clear_search).pack(side="left", padx=(12, 0))
+    def _fill_current(self, body: tk.Frame) -> None:
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_rowconfigure(1, weight=1)
+        self._text(body, "Current price", "caption", fg=MUTED).grid(row=0, column=0, sticky="w")
+        figures = tk.Frame(body, bg=CARD)
+        figures.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
+        figures.grid_columnconfigure(0, weight=1)
+        figures.grid_columnconfigure(1, weight=1)
+        figures.grid_rowconfigure(0, weight=1)
+        self._price_column(figures, "Regular", self.regular_show).grid(row=0, column=0, sticky="nsew")
+        self._price_column(figures, "Diesel", self.diesel_show).grid(row=0, column=1, sticky="nsew", padx=(16, 0))
+        source = self._wrap(self._var_text(body, self.source, "body"), "half")
+        source.grid(row=2, column=0, sticky="ew", pady=(10, 0))
+        self.note_label = self._wrap(self._var_text(body, self.status, "caption", fg=MUTED), "half")
+        self.note_label.grid(row=3, column=0, sticky="ew", pady=(4, 0))
+        self._var_text(body, self.unit_show, "caption", fg=MUTED).grid(row=4, column=0, sticky="w", pady=(4, 0))
 
-        interval = ttk.Frame(lookup, style="Card.TFrame")
-        interval.pack(fill="x", pady=(16, 0))
-        ttk.Label(interval, text="Update every", style="Card.TLabel").pack(side="left")
+    def _price_column(self, parent, title: str, variable: tk.StringVar) -> tk.Frame:
+        frame = tk.Frame(parent, bg=CARD)
+        frame.grid_rowconfigure(1, weight=1)
+        self._text(frame, title, "caption", fg=MUTED).grid(row=0, column=0, sticky="w")
+        number = self._var_text(frame, variable, "price")
+        number.grid(row=1, column=0, sticky="sw", pady=(4, 0))
+        return frame
+
+    def _fill_lookup(self, body: tk.Frame) -> None:
+        body.grid_columnconfigure(0, weight=1)
+        self._text(body, "Price lookup", "caption", fg=MUTED).grid(row=0, column=0, sticky="w")
+        self._text(body, "City", "body").grid(row=1, column=0, sticky="w", pady=(12, 4))
+        self.address_entry = self._entry(body, self.address)
+        self.address_entry.grid(row=2, column=0, sticky="ew")
+        self.address_entry.bind("<Return>", lambda _event: self.start_lookup(True))
+        actions = tk.Frame(body, bg=CARD)
+        actions.grid(row=3, column=0, sticky="w", pady=(12, 0))
+        self.lookup_button = self._button(actions, "Look up", lambda: self.start_lookup(True))
+        self.lookup_button.pack(side="left")
+        self._button(actions, "Clear", self.clear_search, kind="secondary").pack(side="left", padx=(10, 0))
+        interval = tk.Frame(body, bg=CARD)
+        interval.grid(row=4, column=0, sticky="w", pady=(16, 0))
+        self._text(interval, "Update every", "body").pack(side="left")
         self.interval_box = ttk.Spinbox(
             interval,
             from_=15,
             to=240,
             textvariable=self.refresh_minutes,
             width=5,
-            font=FONT_BODY,
             command=self._commit_interval,
         )
-        self.interval_box.pack(side="left", padx=(12, 8))
+        self.interval_box.pack(side="left", padx=(10, 8))
         self.interval_box.bind("<FocusOut>", lambda _event: self._commit_interval())
         self.interval_box.bind("<Return>", lambda _event: self._commit_interval())
-        ttk.Label(interval, text="minutes", style="CardMuted.TLabel").pack(side="left")
+        self._roles.append((self.interval_box, "body"))
+        self._text(interval, "minutes", "caption", fg=MUTED).pack(side="left")
 
-        current = self._section(page, "Current price")
-        figures = ttk.Frame(current, style="Card.TFrame")
-        figures.pack(fill="x")
-        self._price_column(figures, "Regular", self.regular_show).pack(side="left", expand=True, fill="x")
-        self._price_column(figures, "Diesel", self.diesel_show).pack(side="left", expand=True, fill="x")
-        source = ttk.Label(current, textvariable=self.source, style="Card.TLabel", justify="left")
-        self._wrap(source).pack(anchor="w", fill="x", pady=(12, 0))
-        self.note_label = ttk.Label(current, textvariable=self.status, style="CardMuted.TLabel", justify="left")
-        self._wrap(self.note_label).pack(anchor="w", fill="x", pady=(4, 0))
-        ttk.Label(current, textvariable=self.unit_show, style="CardMuted.TLabel").pack(anchor="w", pady=(4, 0))
+    def _fill_manual(self, body: tk.Frame) -> None:
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_columnconfigure(1, weight=1)
+        self._text(body, "Manual pricing", "caption", fg=MUTED).grid(row=0, column=0, columnspan=2, sticky="w")
+        self._text(body, "Regular", "body").grid(row=1, column=0, sticky="w", pady=(12, 4))
+        self._text(body, "Diesel", "body").grid(row=1, column=1, sticky="w", padx=(12, 0), pady=(12, 4))
+        self._entry(body, self.typed_regular).grid(row=2, column=0, sticky="ew")
+        self._entry(body, self.typed_diesel).grid(row=2, column=1, sticky="ew", padx=(12, 0))
+        self._button(body, "Set prices", self.set_prices).grid(row=3, column=0, sticky="w", pady=(12, 0))
 
-        manual = self._section(page, "Manual pricing")
-        boxes = ttk.Frame(manual, style="Card.TFrame")
-        boxes.pack(fill="x")
-        ttk.Label(boxes, text="Regular", style="CardMuted.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(boxes, text="Diesel", style="CardMuted.TLabel").grid(row=0, column=1, sticky="w", padx=(28, 0))
-        ttk.Entry(boxes, textvariable=self.typed_regular, width=12, font=FONT_BODY).grid(
-            row=1, column=0, sticky="w", pady=(8, 0)
-        )
-        ttk.Entry(boxes, textvariable=self.typed_diesel, width=12, font=FONT_BODY).grid(
-            row=1, column=1, sticky="w", padx=(28, 0), pady=(8, 0)
-        )
-        ttk.Button(boxes, text="Set prices", style="Accent.TButton", command=self.set_prices).grid(
-            row=1, column=2, sticky="sw", padx=(20, 0)
-        )
-
-        sign = self._section(page, "Sign")
-        port_row = ttk.Frame(sign, style="Card.TFrame")
-        port_row.pack(fill="x")
-        ttk.Label(port_row, text="Port", style="Card.TLabel").pack(side="left")
-        self.port_combo = ttk.Combobox(port_row, textvariable=self.port_label, width=36, state="readonly")
-        self.port_combo.pack(side="left", fill="x", expand=True, padx=(12, 12))
-        ttk.Button(port_row, text="Refresh", command=self.refresh_ports).pack(side="left")
-        self.connect_button = ttk.Button(port_row, text="Connect", command=self.on_connect_clicked)
-        self.connect_button.pack(side="left", padx=(12, 0))
-        link = ttk.Label(sign, textvariable=self.link_status, style="Card.TLabel", justify="left")
-        self._wrap(link).pack(anchor="w", fill="x", pady=(12, 0))
-
-        bright = ttk.Frame(sign, style="Card.TFrame")
-        bright.pack(fill="x", pady=(16, 0))
-        ttk.Label(bright, text="Brightness", style="Card.TLabel").pack(side="left")
+    def _fill_sign(self, body: tk.Frame) -> None:
+        body.grid_columnconfigure(0, weight=1)
+        self._text(body, "Sign", "caption", fg=MUTED).grid(row=0, column=0, sticky="w")
+        self._text(body, "Port", "body").grid(row=1, column=0, sticky="w", pady=(12, 4))
+        self.port_combo = ttk.Combobox(body, textvariable=self.port_label, state="readonly")
+        self.port_combo.grid(row=2, column=0, sticky="ew")
+        self._roles.append((self.port_combo, "body"))
+        actions = tk.Frame(body, bg=CARD)
+        actions.grid(row=3, column=0, sticky="w", pady=(12, 0))
+        self._button(actions, "Refresh", self.refresh_ports, kind="secondary").pack(side="left")
+        self.connect_button = self._button(actions, "Connect", self.on_connect_clicked)
+        self.connect_button.pack(side="left", padx=(10, 0))
+        link = self._wrap(self._var_text(body, self.link_status, "body"), "half")
+        link.grid(row=4, column=0, sticky="ew", pady=(12, 0))
+        bright = tk.Frame(body, bg=CARD)
+        bright.grid(row=5, column=0, sticky="ew", pady=(14, 0))
+        self._text(bright, "Brightness", "body").pack(side="left")
         scale = ttk.Scale(bright, from_=0, to=7, variable=self.brightness, command=self._on_brightness)
         scale.pack(side="left", fill="x", expand=True, padx=(12, 12))
         scale.bind("<ButtonRelease-1>", lambda _event: self.send_brightness())
-        ttk.Label(bright, textvariable=self.brightness_show, style="Card.TLabel", width=2).pack(side="left")
+        self._var_text(bright, self.brightness_show, "body").pack(side="left")
 
-        self.wiring_link = tk.Label(
-            page,
-            text="Wiring",
-            fg="#c4bfb4",
-            bg=self._paper,
-            cursor="hand2",
-            font=(FONT_BODY[0], FONT_BODY[1], "underline"),
-        )
-        self.wiring_link.pack(anchor="w")
-        self.wiring_link.bind("<Button-1>", lambda _event: self.show_wiring())
+    def _metrics(self, width: int) -> dict[str, int]:
+        scale = max(0.92, min(1.35, width / 1120))
+        return {
+            "caption": max(12, min(14, round(12 * scale))),
+            "body": max(13, min(16, round(13 * scale))),
+            "title": max(18, min(24, round(20 * scale))),
+            "price": max(36, min(64, round(42 * scale))),
+            "button": max(32, min(40, round(34 * scale))),
+        }
 
-    def _price_column(self, parent, title: str, variable: tk.StringVar) -> ttk.Frame:
-        frame = ttk.Frame(parent, style="Card.TFrame")
-        ttk.Label(frame, text=title, style="CardMuted.TLabel").pack(anchor="w")
-        ttk.Label(frame, textvariable=variable, style="Big.TLabel").pack(anchor="w", pady=(4, 0))
-        return frame
+    def _apply_scale(self, width: int) -> None:
+        sizes = self._metrics(width)
+        for widget, role in self._roles:
+            size = sizes[role]
+            font = ("Segoe UI", size, "bold") if role == "price" else ("Segoe UI", size)
+            try:
+                widget.configure(font=font)
+            except tk.TclError:
+                pass
+        for entry in self._entries:
+            entry.configure(font=("Segoe UI", sizes["body"]))
+        for pill in self._pills:
+            pill.set_font(("Segoe UI", sizes["body"]), 6, sizes["button"])
+        self._fit_wrap(width)
 
-    def _show(self, page: ttk.Frame) -> None:
+    def _fit_wrap(self, width: int) -> None:
+        half = max(220, int((width - self._gap * 3) / 2) - 56)
+        full = max(280, width - self._gap * 2 - 24)
+        for label, span in self._wrap_labels:
+            label.configure(wraplength=full if span == "full" else half)
+
+
+    def _show(self, page: tk.Frame) -> None:
         for other in (self.wiring_page, self.upload_page, self.price_page):
-            other.pack_forget()
-        page.pack(fill="both", expand=True)
+            if other.winfo_manager():
+                other.grid_remove()
+        page.grid(row=0, column=0, sticky="nsew")
         self.page = "wiring" if page is self.wiring_page else "upload" if page is self.upload_page else "prices"
 
     def show_wiring(self) -> None:
@@ -499,10 +650,13 @@ class App:
 
     def show_upload(self) -> None:
         self._show(self.upload_page)
-        if self.setup_done:
-            self.continue_button.pack(anchor="w")
+        self._set_continue_visible(self.setup_done)
+
+    def _set_continue_visible(self, show: bool) -> None:
+        if show:
+            self.continue_button.grid(row=2, column=0, sticky="w", padx=self._gap, pady=(0, self._gap))
         else:
-            self.continue_button.pack_forget()
+            self.continue_button.grid_remove()
 
     def show_prices(self) -> None:
         self._show(self.price_page)
@@ -600,11 +754,14 @@ class App:
         self.root.destroy()
 
     def _on_resize(self, event) -> None:
-        if event.widget is not self.root:
+        if event.widget is not self.root or event.width < 200:
             return
-        width = max(560, event.width - 140)
-        for label in self._wrap_labels:
-            label.configure(wraplength=width)
+        bucket = event.width // 24
+        if bucket != self._scale_bucket:
+            self._scale_bucket = bucket
+            self._apply_scale(event.width)
+        else:
+            self._fit_wrap(event.width)
 
     def _on_edit(self, *_args) -> None:
         if self._filling:
@@ -829,7 +986,7 @@ class App:
         self.upload_status.set(message)
         self.refresh_ports()
         if ok:
-            self.continue_button.pack(anchor="w")
+            self._set_continue_visible(True)
 
     def on_connect_clicked(self) -> None:
         if self.ser:
