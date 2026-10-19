@@ -33,7 +33,7 @@ from prices import PriceError, Lookup, average, format_display, lookup_address
 from uploader import UploadError, upload_sketch
 from view import apply_scale, build as build_view, show as show_page
 
-APP_VERSION = "1.9"
+APP_VERSION = "1.10"
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "gas_sign_config.json"
 UNIT_LABELS = {
