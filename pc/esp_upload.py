@@ -10,19 +10,19 @@ class UploadError(Exception):
     """A failure the window can show in one sentence."""
 
 
-PLUG_IN = "Plug in the NodeMCU, then click Upload."
+PLUG_IN = "Plug in the board, then click Upload."
 RETRY = "Hold the FLASH button if the board has one, then click Upload again."
-MISSING = "The NodeMCU program is not included in this copy of the app."
+MISSING = "The ESP8266 program is not included in this copy of the app."
 
 
-def firmware_path() -> Path:
+def firmware_path(name: str = "gas_sign_nodemcu.bin") -> Path:
     if getattr(sys, "frozen", False):
-        return Path(getattr(sys, "_MEIPASS")) / "firmware" / "gas_sign_nodemcu.bin"
-    return Path(__file__).resolve().parent / "firmware" / "gas_sign_nodemcu.bin"
+        return Path(getattr(sys, "_MEIPASS")) / "firmware" / name
+    return Path(__file__).resolve().parent / "firmware" / name
 
 
-def flash_board(port: str) -> None:
-    binary = firmware_path()
+def flash_board(port: str, name: str = "gas_sign_nodemcu.bin") -> None:
+    binary = firmware_path(name)
     if not binary.is_file():
         raise UploadError(MISSING)
     if not port:

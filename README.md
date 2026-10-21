@@ -1,34 +1,32 @@
 # Desktop gas sign
 
-Two ways to build the same desk sign. Both use two 4-digit TM1637 displays.
+One Windows program for the same desk sign. Two 4-digit TM1637 displays. The first screen picks the board.
 
-Version 1.12.
+Version 1.13.
 
 Project: https://github.com/epjarv/desktop-gas-sign
 
-The Arduino edition is a Pro Micro with no Wi-Fi. A Windows program looks up the price and sends it over USB. That program has to keep running.
+The Arduino Pro Micro has no Wi-Fi. The program looks up the price and sends it over USB. That program has to keep running.
 
-The ESP8266 edition is a Lolin NodeMCU v3. You set the Wi-Fi network and the city once from the PC. After that the board joins the network and updates regular and diesel by itself. USB is only for power.
+The Lolin NodeMCU v3 and the Freenove ESP8266 Development Board (the 32-bit 160 MHz mini, FNK0076) save Wi-Fi and a city once. After that the board updates regular and diesel by itself. USB is only for power. Those two boards share one program, because the GPIO numbers match. The printed pin names differ.
 
 ## Download
 
-There are two programs. Pick the one that matches the board.
+There is one program, Desktop Gas Sign.exe.
 
-- Desktop Gas Sign Arduino.exe is the Pro Micro. It looks up prices on the PC.
-- Desktop Gas Sign ESP8266.exe is the NodeMCU. It flashes the board, then the board fetches prices on its own.
-
-1. Download the exe that matches your board from the GitHub release.
+1. Download it from the GitHub release.
 2. Double-click the file.
-3. Plug the board into the PC with a data cable.
-4. Follow the window.
+3. Choose Arduino Pro Micro, Lolin NodeMCU v3, or Freenove ESP8266.
+4. Plug that board into the PC with a data cable.
+5. Follow the pinout, then the upload. Choose Skip if the program is already on the board.
 
-The first screen is the pinout. The next screen can load the program onto the board. Choose Skip if the program is already there.
+The choice is remembered. Change board is on the later screens.
 
-On the Arduino app, type a city and click Look up, or type your own prices and click Set prices. Click Connect so the sign can show the numbers. Closing the window leaves it in the system tray. Quit is on the tray icon.
+On the Arduino, type a city and click Look up, or type your own prices and click Set prices. Click Connect so the sign can show the numbers. Closing the window leaves it in the system tray. Quit is on the tray icon.
 
-On the ESP8266 app, scan for Wi-Fi, choose the network, type the password and a city, and save. Wi-Fi and the city stay saved even if the first price download fails. The board retries. When a price arrives, unplug it from the PC and power it from any USB port.
+On a NodeMCU or Freenove board, scan for Wi-Fi, choose the network, type the password and a city, and save. Wi-Fi and the city stay saved even if the first price download fails. The board retries. When a price arrives, unplug it from the PC and power it from any USB port. Closing the window after that does not stop the board.
 
-The Arduino sketch is in arduino/gas_sign_pro_micro. The NodeMCU sketch is in esp8266/gas_sign_nodemcu. The PC apps are in pc/.
+The Arduino sketch is in arduino/gas_sign_pro_micro. The ESP8266 sketch is in esp8266/gas_sign_nodemcu. The PC app is in pc/.
 
 ## Where the prices come from
 
@@ -46,7 +44,7 @@ United Kingdom prices are the 3 nearest stations from UK Government Fuel Finder,
 
 Canada is shown in cents per litre, the United States in dollars per gallon, and the United Kingdom in pence per litre.
 
-On the Arduino app, a typed regular price and diesel price replace the lookup. On the ESP8266, the board does this lookup itself after the city is saved. The ESP8266 does not check HTTPS certificates. BearSSL on that board is used that way for this DIY sign.
+On the Arduino, a typed regular price and diesel price replace the lookup. On the NodeMCU and the Freenove board, the board does this lookup itself after the city is saved. Those boards do not check HTTPS certificates. BearSSL on the ESP8266 is used that way for this DIY sign.
 
 ## Arduino wiring
 
@@ -64,11 +62,9 @@ Both displays share 5V and GND. Use one header on each module. The top display u
 
 ## ESP8266 wiring
 
-Lolin NodeMCU v3. Do not use GPIO0, GPIO2, or GPIO15. Those pins decide how the board boots.
+Do not use GPIO0, GPIO2, or GPIO15. Those pins decide how the board boots. Use one header on each display. The second header is the same four pins. The clock and data pins are 3.3V. A TM1637 accepts that with 5V on the display power pin.
 
-Both displays share VIN and GND. VIN is 5V when the board is powered from USB. The clock and data pins are 3.3V. A TM1637 accepts that.
-
-Use one header on each module. The second header is the same four pins.
+Lolin NodeMCU v3. VIN is 5V when the board is powered from USB. Many of these boards have no pin labeled 5V.
 
 | NodeMCU | Top display | Bottom display |
 | --- | --- | --- |
@@ -79,11 +75,24 @@ Use one header on each module. The second header is the same four pins.
 | D5 GPIO14 | | CLK |
 | D6 GPIO12 | | DIO |
 
+Freenove ESP8266 Development Board. The names below are the ones printed on that board, from Freenove's pin diagram: https://github.com/Freenove/Freenove_ESP8266_Board/blob/master/ESP8266_Pinout.jpg
+
+The pin labeled 5V is USB 5V. Do not power the displays from 3.3V. Pins 0, 2, and 15 are the boot pins. Freenove's FNK0076 preface flashes this board as NodeMCU 1.0 (ESP-12E), 4 MB, DIO: https://docs.freenove.com/projects/fnk0076/en/latest/fnk0076/codes/C/Preface.html
+
+| Freenove | Top display | Bottom display |
+| --- | --- | --- |
+| 5V | 5V | 5V |
+| GND | GND | GND |
+| 5 GPIO5 | CLK | |
+| 4 GPIO4 | DIO | |
+| 14 GPIO14 | | CLK |
+| 12 GPIO12 | | DIO |
+
 The setup program talks to the board at 115200 baud. It asks the board to scan, then sends the network name, the password, the city, and how many minutes between updates. The board saves those and fetches prices on its own. The usual interval is 30 minutes, from 15 to 240.
 
 ## How this was built
 
-This project was built in Cursor with an AI coding assistant (Grok, in the Cursor agent). The assistant wrote the Arduino sketch, the ESP8266 sketch, the PC apps, the GitHub packaging, and much of this README. The owner directed the product: two displays, a Pro Micro, a NodeMCU edition, live area prices, and a DIY case. They chose the parts, wired the sign, tested the hardware, and asked for changes. A lot of the software was generated with AI, then tested and steered by them. The assistant did not design the physical sign.
+This project was built in Cursor with an AI coding assistant (Grok, in the Cursor agent). The assistant wrote the Arduino sketch, the ESP8266 sketch, the PC app, the GitHub packaging, and much of this README. The owner directed the product: two displays, a Pro Micro, a NodeMCU, a Freenove board, live area prices, and a DIY case. They chose the parts, wired the sign, tested the hardware, and asked for changes. A lot of the software was generated with AI, then tested and steered by them. The assistant did not design the physical sign.
 
 ## Bill of materials
 
@@ -93,6 +102,7 @@ This project was built in Cursor with an AI coding assistant (Grok, in the Curso
   Use 4-digit displays with decimal points on the digits, not a clock module that only has a colon. Green sits on top in the case.
 - Arduino Pro Micro, 5V / 16 MHz, for the Arduino edition: https://www.aliexpress.com/item/1005008228645771.html
 - Lolin NodeMCU v3 (ESP8266), for the standalone edition.
+- Freenove ESP8266 Development Board, the 32-bit 160 MHz mini (FNK0076), for the same standalone edition. The printed pin names differ from the NodeMCU. The program is the same.
 - A USB data cable. A charge-only cable will not work for setup.
 - Jumper wires.
 

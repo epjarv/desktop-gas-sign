@@ -1,12 +1,11 @@
-"""Desktop window that looks up fuel prices and sends them to the Pro Micro sign.
+"""Desktop Gas Sign. One window. The first screen picks the board.
 
-The USB port stays open. A Pro Micro restarts when the port is first opened,
-so this waits for the sketch to print READY before the first prices go out.
-Later updates write another line on that same port. If READY appears again,
-the last prices are sent again.
+An Arduino Pro Micro stays on USB. This window looks up prices and sends them
+after the sketch prints READY. Closing that window leaves the lookup running
+in the system tray.
 
-Closing or minimizing the window hides it in the system tray. The lookup
-timer keeps running there. Quit on the tray icon is what closes the port.
+A NodeMCU or Freenove board saves Wi-Fi and a city, then updates on its own.
+Closing the window after that does not stop the board.
 """
 
 from __future__ import annotations
@@ -15,6 +14,7 @@ import json
 import socket
 import sys
 import threading
+import time
 import tkinter as tk
 from ctypes import windll
 from pathlib import Path
@@ -29,11 +29,14 @@ except ImportError:
     sys.stderr.write("Install dependencies with: py -3 -m pip install -r requirements.txt\n")
     raise
 
+from boards import get_board
+from esp_upload import UploadError as EspUploadError
+from esp_upload import flash_board
 from prices import PriceError, Lookup, average, format_display, lookup_address
 from uploader import UploadError, upload_sketch
 from view import apply_scale, build as build_view, show as show_page
 
-APP_VERSION = "1.11"
+APP_VERSION = "1.13"
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "gas_sign_config.json"
 UNIT_LABELS = {
@@ -144,7 +147,7 @@ def tray_sentence(minutes: int) -> str:
 class App:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title(f"Desktop Gas Sign Arduino {APP_VERSION}")
+        self.root.title(f"Desktop Gas Sign v{APP_VERSION}")
         self.root.update_idletasks()
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
@@ -199,6 +202,13 @@ class App:
         self._hiding = False
         self._told_tray = False
         self.page = ""
+        self.board_id = ""
+        self.board = None
+        self.save_running = False
+        self.board_ready = False
+        self.price_note = ""
+        self.wifi_password = tk.StringVar()
+        self.wifi_status = tk.StringVar(value="Upload the program, or choose Skip if it is already there.")
 
         self._build()
         self.typed_regular.trace_add("write", self._on_edit)
@@ -215,14 +225,7 @@ class App:
         self.root.after(200, self.poll_serial)
         self.root.after(60_000, self.keepalive)
         self.schedule_refresh()
-        if self.setup_done:
-            self.show_prices()
-            if self.address.get().strip() and not self.user_edited:
-                self.start_lookup(manual=False)
-            if self.port_map.get(self.port_label.get()):
-                self.connect()
-        else:
-            self.show_wiring()
+        self._open_saved_page()
 
     def _build(self) -> None:
         self.version = APP_VERSION
@@ -233,12 +236,93 @@ class App:
     def _show(self, page: tk.Frame) -> None:
         show_page(self, page)
 
+    def _is_esp(self) -> bool:
+        return self.board is not None and self.board.kind == "esp"
+
+    def _open_saved_page(self) -> None:
+        if self.board is None:
+            self.show_picker()
+            return
+        self._apply_board_labels()
+        if not self.setup_done:
+            self.show_wiring()
+            return
+        if self._is_esp():
+            self.show_wifi()
+            return
+        self.show_prices()
+        if self.address.get().strip() and not self.user_edited:
+            self.start_lookup(manual=False)
+        if self.port_map.get(self.port_label.get()):
+            self.connect()
+
+    def show_picker(self) -> None:
+        if self.ser is not None:
+            self.mark_disconnected()
+        self._show(self.board_page)
+
+    def choose_board(self, board_id: str) -> None:
+        if self.upload_running or self.save_running:
+            return
+        board = get_board(board_id)
+        if board is None:
+            return
+        same = self.board_id == board_id
+        self.board_id = board_id
+        self.board = board
+        if not same:
+            self.setup_done = False
+            self.board_ready = False
+        self._apply_board_labels()
+        self.save_config()
+        if same and self.setup_done:
+            self._open_saved_page()
+            return
+        self.show_wiring()
+
+    def _apply_board_labels(self) -> None:
+        board = self.board
+        if board is None:
+            return
+        self.wire_title.set(f"Wire the {board.name}")
+        for row_index, row in enumerate(board.pins):
+            for column, cell in enumerate(row):
+                self.pin_cells[row_index][column].configure(text=cell)
+        self.wire_caution.configure(text=board.caution)
+        self.upload_title.set(f"Program the {board.name}")
+        self.upload_lead.set(f"Plug the {board.name} into the PC with a data USB cable.")
+        self.upload_button.configure(text="Upload")
+        self.wifi_title.set("Wi-Fi and city")
+
     def show_wiring(self) -> None:
+        if self.board is not None:
+            self._apply_board_labels()
         self._show(self.wiring_page)
 
     def show_upload(self) -> None:
+        if self.board is not None:
+            self._apply_board_labels()
         self._show(self.upload_page)
-        self._set_continue_visible(self.setup_done)
+        self._set_continue_visible(False)
+
+    def show_wifi(self) -> None:
+        self._show(self.wifi_page)
+        self.wifi_status.set("Click Scan again if the list is empty.")
+        self.root.after(1500, self.start_scan)
+
+    def skip_programming(self) -> None:
+        self.setup_done = True
+        self.save_config()
+        if self._is_esp():
+            self.show_wifi()
+            return
+        self.show_prices()
+
+    def finish_setup(self) -> None:
+        self.skip_programming()
+
+    def show_prices(self) -> None:
+        self._show(self.price_page)
 
     def _set_continue_visible(self, show: bool) -> None:
         if show:
@@ -246,21 +330,13 @@ class App:
         else:
             self.continue_button.grid_remove()
 
-    def show_prices(self) -> None:
-        self._show(self.price_page)
-
-    def finish_setup(self) -> None:
-        self.setup_done = True
-        self.save_config()
-        self.show_prices()
-
     def _start_tray(self) -> None:
         menu = pystray.Menu(
             pystray.MenuItem("Show", self._tray_show, default=True),
             pystray.MenuItem("Update now", self._tray_update),
             pystray.MenuItem("Quit", self._tray_quit),
         )
-        self.icon = pystray.Icon("desktop_gas_sign", load_app_icon(64), "Desktop Gas Sign Arduino", menu)
+        self.icon = pystray.Icon("desktop_gas_sign", load_app_icon(64), "Desktop Gas Sign", menu)
         threading.Thread(target=self.icon.run, name="tray", daemon=True).start()
         self.tray_ok = True
 
@@ -286,7 +362,7 @@ class App:
     def hide_window(self) -> None:
         if self._quitting or self._hiding:
             return
-        if not self.tray_ok:
+        if self._is_esp() or not self.tray_ok:
             self._finish_quit()
             return
         self._hiding = True
@@ -301,7 +377,7 @@ class App:
         try:
             self.icon.notify(
                 f"Still running. It looks up this city about every {self.minutes()} minutes. Right-click the icon and choose Quit to exit.",
-                "Desktop Gas Sign Arduino",
+                "Desktop Gas Sign",
             )
         except Exception:
             pass
@@ -414,7 +490,7 @@ class App:
         return label.split(" — ")[0].strip()
 
     def start_lookup(self, manual: bool) -> None:
-        if self.lookup_running:
+        if self.lookup_running or self._is_esp():
             return
         address = self.address.get().strip()
         if not address:
@@ -538,27 +614,48 @@ class App:
         self.send_current()
 
     def start_upload(self) -> None:
-        if self.upload_running:
+        if self.upload_running or self.board is None:
             return
         if self.ser is not None:
             self.mark_disconnected()
+        port = self._upload_port()
+        if self._is_esp() and not port:
+            self.upload_status.set(f"Plug in the {self.board.name}, then click Upload.")
+            return
         self.upload_running = True
         self.upload_button.configure(state="disabled")
         self.connect_button.configure(state="disabled")
         self.upload_status.set("Uploading")
-        port = self.selected_port()
         threading.Thread(target=self._upload_thread, args=(port,), daemon=True).start()
+
+    def _upload_port(self) -> str:
+        ports = list(list_ports.comports())
+        if self._is_esp():
+            def rank(port) -> int:
+                text = f"{port.description} {port.manufacturer or ''} {port.hwid}".lower()
+                if "1a86" in text or "ch340" in text or "cp210" in text or "10c4" in text or "silicon labs" in text:
+                    return 0
+                if "usb" in text or "uart" in text or "serial" in text:
+                    return 1
+                return 2
+            ports.sort(key=rank)
+            return ports[0].device if ports else ""
+        return self.selected_port()
 
     def _upload_thread(self, port: str) -> None:
         try:
-            upload_sketch(port or None)
-        except UploadError as exc:
+            if self._is_esp():
+                flash_board(port, self.board.firmware)
+            else:
+                upload_sketch(port or None)
+        except (UploadError, EspUploadError) as exc:
             message = str(exc)
-            if "Plug in" not in message:
+            if not self._is_esp() and "Plug in" not in message:
                 message = UPLOAD_RETRY
             self.root.after(0, lambda message=message: self._upload_finished(message, ok=False))
         except Exception:
-            self.root.after(0, lambda: self._upload_finished(UPLOAD_RETRY, ok=False))
+            retry = "The upload did not finish. Try again." if self._is_esp() else UPLOAD_RETRY
+            self.root.after(0, lambda retry=retry: self._upload_finished(retry, ok=False))
         else:
             self.root.after(0, lambda: self._upload_finished("Upload finished", ok=True))
 
@@ -568,8 +665,14 @@ class App:
         self.connect_button.configure(state="normal")
         self.upload_status.set(message)
         self.refresh_ports()
-        if ok:
-            self._set_continue_visible(True)
+        if not ok:
+            return
+        if self._is_esp():
+            self.setup_done = True
+            self.save_config()
+            self.show_wifi()
+            return
+        self._set_continue_visible(True)
 
     def on_connect_clicked(self) -> None:
         if self.ser:
@@ -611,10 +714,175 @@ class App:
         self.connect_button.configure(text="Connect")
         self.link_status.set(message)
 
+    def _esp_port(self) -> str:
+        return self._upload_port() if self._is_esp() else ""
+
+    def _close_esp(self) -> None:
+        port = self.ser
+        self.ser = None
+        if port is not None:
+            try:
+                port.close()
+            except serial.SerialException:
+                pass
+
+    def _open_esp(self) -> bool:
+        self._close_esp()
+        port = self._esp_port()
+        if not port:
+            self.wifi_status.set(f"Plug in the {self.board.name}.")
+            return False
+        try:
+            self.ser = serial.Serial(port, 115200, timeout=0)
+        except serial.SerialException:
+            self.ser = None
+            self.wifi_status.set("Could not open the port. Unplug the board, plug it back in, and try again.")
+            return False
+        self.rx = ""
+        time.sleep(0.4)
+        return True
+
+    def start_scan(self) -> None:
+        if not self._is_esp() or self.page != "wifi" or self.save_running:
+            return
+        if self.ser is None and not self._open_esp():
+            return
+        self.wifi_status.set("Scanning")
+        self.network_list.delete(0, "end")
+        try:
+            self.ser.write(b"SCAN\n")
+        except serial.SerialException:
+            self.wifi_status.set("The board unplugged.")
+            self._close_esp()
+
+    def _selected_ssid(self) -> str:
+        picked = self.network_list.curselection()
+        if not picked:
+            return ""
+        text = self.network_list.get(picked[0])
+        return text.rsplit("  ", 1)[0]
+
+    def start_wifi_save(self) -> None:
+        if self.save_running or not self._is_esp():
+            return
+        ssid = self._selected_ssid()
+        if not ssid:
+            self.wifi_status.set("Select a network first.")
+            return
+        city = self.address.get().strip()
+        if not city:
+            self.wifi_status.set("Type a city.")
+            return
+        if self.ser is None and not self._open_esp():
+            return
+        self._commit_interval()
+        minutes = self.minutes()
+        self.save_running = True
+        self.save_button.configure(state="disabled")
+        self.wifi_status.set("Saving on the board")
+        password = self.wifi_password.get()
+        threading.Thread(target=self._wifi_save_thread, args=(ssid, password, city, minutes), daemon=True).start()
+
+    def _wifi_save_thread(self, ssid: str, password: str, city: str, minutes: int) -> None:
+        try:
+            self._write_esp(f"WIFI\t{ssid}\t{password}")
+            self._write_esp(f"CITY\t{city}")
+            self._write_esp(f"INTERVAL\t{minutes}")
+            self._write_esp("SAVE")
+        except serial.SerialException:
+            self.root.after(0, lambda: self._wifi_save_done("The board unplugged.", False))
+            return
+        deadline = time.time() + 40
+        error = "The board did not answer. Try Save on board again."
+        while time.time() < deadline:
+            line = self._wait_esp_line(deadline)
+            if line is None:
+                break
+            if line.startswith("OK CONNECTED"):
+                self.root.after(0, lambda: self._wifi_save_done("Configured. The board will retry until a price arrives.", True))
+                return
+            if line.startswith("ERR PRICE"):
+                self.price_note = line[9:].strip()
+                continue
+            if line.startswith("ERR"):
+                error = line[4:].strip() or "The board reported an error."
+                break
+        self.root.after(0, lambda error=error: self._wifi_save_done(error, False))
+
+    def _wifi_save_done(self, message: str, ready: bool) -> None:
+        self.save_running = False
+        self.save_button.configure(state="normal")
+        if ready:
+            self.board_ready = True
+            self.setup_done = True
+            self.save_config()
+            if self.price_note:
+                message = "Configured. It will retry. " + self.price_note
+        self.wifi_status.set(message)
+
+    def _write_esp(self, text: str) -> None:
+        if self.ser is None:
+            raise serial.SerialException("closed")
+        self.ser.write((text + "\n").encode("utf-8"))
+
+    def _wait_esp_line(self, deadline: float) -> str | None:
+        while time.time() < deadline:
+            if self.ser is None:
+                return None
+            try:
+                data = self.ser.read(256)
+            except serial.SerialException:
+                return None
+            if data:
+                self.rx += data.decode("utf-8", "replace")
+            if "\n" in self.rx:
+                line, self.rx = self.rx.split("\n", 1)
+                return line.strip()
+            time.sleep(0.05)
+        return None
+
+    def _poll_esp(self) -> None:
+        if self.ser is None or self.save_running or self.page != "wifi":
+            return
+        try:
+            data = self.ser.read(512)
+        except serial.SerialException:
+            self._close_esp()
+            data = b""
+        if not data:
+            return
+        self.rx += data.decode("utf-8", "replace")
+        while "\n" in self.rx:
+            line, self.rx = self.rx.split("\n", 1)
+            self._on_esp_line(line.strip())
+
+    def _on_esp_line(self, line: str) -> None:
+        if not line or "\t" not in line or line.startswith("OK") or line.startswith("ERR"):
+            if line == "SCAN":
+                self.wifi_status.set("Scanning")
+            elif line == "SCAN_DONE":
+                self.wifi_status.set("Select a network.")
+            elif line.startswith("PRICE") and self.board_ready:
+                self.wifi_status.set("Updated. " + line[6:].strip())
+            elif line.startswith("ERR PRICE"):
+                reason = line[9:].strip()
+                if self.board_ready:
+                    self.wifi_status.set("Configured. It will retry. " + reason)
+                else:
+                    self.price_note = reason
+            elif line.startswith("ERR"):
+                self.wifi_status.set(line[4:].strip())
+            return
+        name, _, rssi = line.partition("\t")
+        if name:
+            self.network_list.insert("end", f"{name}  {rssi}")
+
     def poll_serial(self) -> None:
         if self._quitting:
             return
-        if self.ser is not None:
+        if self._is_esp():
+            self._poll_esp()
+        elif self.ser is not None:
             try:
                 data = self.ser.read(512)
             except serial.SerialException:
@@ -688,7 +956,7 @@ class App:
     def keepalive(self) -> None:
         if self._quitting:
             return
-        if self.ser is not None and self.last_payload:
+        if not self._is_esp() and self.ser is not None and self.last_payload:
             self._write(self.last_payload)
         self.root.after(60_000, self.keepalive)
 
@@ -736,7 +1004,9 @@ class App:
 
     def auto_refresh(self) -> None:
         self.refresh_job = None
-        if self._quitting:
+        if self._quitting or self._is_esp():
+            if not self._quitting:
+                self.schedule_refresh()
             return
         if self.address.get().strip() and not self.user_edited:
             self.start_lookup(manual=False)
@@ -745,6 +1015,7 @@ class App:
     def save_config(self) -> None:
         payload = {
             "setup_done": self.setup_done,
+            "board": self.board_id,
             "address": self.address.get(),
             "port": self.selected_port(),
             "brightness": self.brightness.get(),
@@ -768,6 +1039,13 @@ class App:
         self._filling = True
         try:
             self.setup_done = bool(payload.get("setup_done"))
+            stored_board = payload.get("board") or ""
+            if stored_board:
+                self.board = get_board(stored_board)
+                self.board_id = stored_board if self.board is not None else ""
+            elif self.setup_done:
+                self.board = get_board("pro_micro")
+                self.board_id = "pro_micro"
             self.address.set(payload.get("address") or "")
             self.place.set(payload.get("place") or "")
             self.summary.set(payload.get("summary") or "")

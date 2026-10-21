@@ -1,16 +1,22 @@
 /*
-  Desktop gas sign, ESP8266 edition. Lolin NodeMCU v3.
+  Desktop gas sign, ESP8266 edition.
 
   After Wi-Fi and a city are saved, the board updates by itself.
   The PC app is only for the first setup and for flashing.
 
+  One binary for two boards. The GPIO numbers match.
+  Lolin NodeMCU v3 silkscreen: VIN, GND, D1, D2, D5, D6.
+  Freenove ESP8266 (FNK0076) silkscreen, from
+  https://github.com/Freenove/Freenove_ESP8266_Board/blob/master/ESP8266_Pinout.jpg
+  : 5V, GND, 5, 4, 14, 12. Freenove flashes as NodeMCU 1.0, 4 MB, DIO.
+
   Wiring, one header on each TM1637 (the second header is the same pins):
-    VIN  -> both VCC (5V when the board is on USB)
-    GND  -> both GND
-    D1 GPIO5  -> top display CLK
-    D2 GPIO4  -> top display DIO
-    D5 GPIO14 -> bottom display CLK
-    D6 GPIO12 -> bottom display DIO
+    VIN or 5V -> both VCC (USB 5V)
+    GND       -> both GND
+    GPIO5     -> top display CLK   (NodeMCU D1, Freenove pin 5)
+    GPIO4     -> top display DIO   (NodeMCU D2, Freenove pin 4)
+    GPIO14    -> bottom display CLK (NodeMCU D5, Freenove pin 14)
+    GPIO12    -> bottom display DIO (NodeMCU D6, Freenove pin 12)
   GPIO0, GPIO2, and GPIO15 are left alone. They decide how the board boots.
 
   HTTPS uses BearSSL with setInsecure(). This DIY sign does not check

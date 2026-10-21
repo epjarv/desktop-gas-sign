@@ -9,6 +9,8 @@ from tkinter import ttk
 
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
+from boards import BOARDS
+
 NIGHT_TOP = (8, 16, 34)
 PAPER_RGB = NIGHT_TOP
 SHEET_RGB = PAPER_RGB
@@ -291,11 +293,11 @@ def _minutes_entry(parent, variable) -> tk.Entry:
     return entry
 
 
-def _heading(parent, title: str, version: str) -> None:
+def _heading(parent, title: str, version: str, title_var=None) -> None:
     row = tk.Frame(parent, bg=SHEET, highlightthickness=0, bd=0)
     row.grid(row=0, column=0, sticky="ew", pady=(0, 10))
     row.grid_columnconfigure(0, weight=1)
-    _text(row, title, 22).grid(row=0, column=0, sticky="w")
+    _text(row, "" if title_var is not None else title, 22, variable=title_var).grid(row=0, column=0, sticky="w")
     _text(row, version, 12, MUTED).grid(row=0, column=1, sticky="e")
 
 
@@ -314,7 +316,9 @@ def build(app) -> None:
     app._prices: list[tk.Label] = []
     app.wiring_page = _page(app, _wiring)
     app.upload_page = _page(app, _upload)
+    app.wifi_page = _page(app, _wifi)
     app.price_page = _page(app, _prices)
+    app.board_page = _page(app, _picker)
     apply_scale(app, 1100)
 
 
@@ -334,56 +338,111 @@ def _wrap(app, label: tk.Label) -> tk.Label:
     return label
 
 
+def _picker(app, body: tk.Frame) -> None:
+    body.grid_columnconfigure(0, weight=1)
+    _heading(body, "Choose the board", app.version)
+    for index, board in enumerate(BOARDS):
+        Command(body, board.name, lambda board_id=board.id: app.choose_board(board_id)).grid(
+            row=index * 2 + 1, column=0, sticky="w", pady=(16, 0)
+        )
+        _text(body, board.summary, 13, MUTED).grid(row=index * 2 + 2, column=0, sticky="w", pady=(6, 0))
+
+
 def _wiring(app, body: tk.Frame) -> None:
     body.grid_columnconfigure(0, weight=1)
-    body.grid_rowconfigure(4, weight=1)
-    _heading(body, "Wire the sign", app.version)
+    body.grid_rowconfigure(6, weight=1)
+    app.wire_title = tk.StringVar(value="Wire the sign")
+    _heading(body, "", app.version, app.wire_title)
     table = tk.Frame(body, bg=SHEET, highlightthickness=0, bd=0)
     table.grid(row=1, column=0, sticky="ew")
     for column in range(3):
         table.grid_columnconfigure(column, weight=1)
-    rows = (
-        ("Pro Micro", "Top display", "Bottom display"),
-        ("VCC", "5V", "5V"),
-        ("GND", "GND", "GND"),
-        ("Pin 4", "CLK", ""),
-        ("Pin 5", "DIO", ""),
-        ("Pin 6", "", "CLK"),
-        ("Pin 7", "", "DIO"),
-    )
-    for row_index, row in enumerate(rows):
-        for column, cell in enumerate(row):
-            color = MUTED if row_index == 0 else INK
-            size = 12 if row_index == 0 else 13
-            _text(table, cell, size, color).grid(row=row_index, column=column, sticky="ew", padx=(0, 16), pady=5)
-    note = _wrap(
+    app.pin_cells = []
+    for row_index in range(7):
+        row_cells = []
+        for column in range(3):
+            label = _text(table, "", 12 if row_index == 0 else 13, MUTED if row_index == 0 else INK)
+            label.grid(row=row_index, column=column, sticky="ew", padx=(0, 16), pady=5)
+            row_cells.append(label)
+        app.pin_cells.append(row_cells)
+    app.wire_note = _wrap(
         app,
-        _text(
-            body,
-            "Each display has a second header. That header is the same four pins. Use one header only.",
-            13,
-        ),
+        _text(body, "Each display has a second header. That header is the same four pins. Use one header only.", 13),
     )
-    note.grid(row=2, column=0, sticky="ew", pady=(16, 0))
-    Command(body, "Next", app.show_upload).grid(row=3, column=0, sticky="w", pady=(16, 0))
+    app.wire_note.grid(row=2, column=0, sticky="ew", pady=(16, 0))
+    app.wire_caution = _wrap(app, _text(body, "", 13, MUTED))
+    app.wire_caution.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+    actions = tk.Frame(body, bg=PAPER, highlightthickness=0, bd=0)
+    actions.grid(row=4, column=0, sticky="w", pady=(16, 0))
+    Command(actions, "Next", app.show_upload).pack(side="left")
+    Command(actions, "Change board", app.show_picker, kind="quiet").pack(side="left", padx=(8, 0))
 
 
 def _upload(app, body: tk.Frame) -> None:
     body.grid_columnconfigure(0, weight=1)
     body.grid_rowconfigure(6, weight=1)
-    _heading(body, "Upload", app.version)
-    _text(body, "Plug the sign into the PC with the USB cable.", 13).grid(row=1, column=0, sticky="w")
+    app.upload_title = tk.StringVar(value="Upload")
+    _heading(body, "", app.version, app.upload_title)
+    app.upload_lead = tk.StringVar(value="Plug the board into the PC with a data USB cable.")
+    _text(body, "", 13, variable=app.upload_lead).grid(row=1, column=0, sticky="w")
     actions = tk.Frame(body, bg=SHEET, highlightthickness=0, bd=0)
     actions.grid(row=2, column=0, sticky="w", pady=(16, 0))
-    app.upload_button = Command(actions, "Upload to sign", app.start_upload)
+    app.upload_button = Command(actions, "Upload", app.start_upload)
     app.upload_button.pack(side="left")
-    Command(actions, "Skip", app.finish_setup, kind="quiet").pack(side="left", padx=(8, 0))
-    _text(body, "Choose Skip if this sign already has the program.", 12, MUTED).grid(
+    Command(actions, "Skip", app.skip_programming, kind="quiet").pack(side="left", padx=(8, 0))
+    _text(body, "Choose Skip if this board already has the program.", 12, MUTED).grid(
         row=3, column=0, sticky="w", pady=(12, 0)
     )
     status = _wrap(app, _text(body, "", 13, variable=app.upload_status))
     status.grid(row=4, column=0, sticky="ew", pady=(12, 0))
     app.continue_button = Command(body, "Continue", app.finish_setup)
+
+
+def _wifi(app, body: tk.Frame) -> None:
+    body.grid_columnconfigure(0, weight=1)
+    body.grid_rowconfigure(2, weight=1)
+    app.wifi_title = tk.StringVar(value="Wi-Fi and city")
+    _heading(body, "", app.version, app.wifi_title)
+    _text(body, "The board scans. Pick a network, then it updates on its own.", 13).grid(row=1, column=0, sticky="w")
+    app.network_list = tk.Listbox(
+        body,
+        height=8,
+        bg=FIELD,
+        fg=INK,
+        selectbackground=ACCENT,
+        selectforeground="#f4f8fc",
+        highlightthickness=0,
+        bd=0,
+        font=("Segoe UI", 12),
+        activestyle="none",
+    )
+    app.network_list.grid(row=2, column=0, sticky="nsew", pady=(12, 8))
+    Command(body, "Scan again", app.start_scan, kind="quiet").grid(row=3, column=0, sticky="w")
+    form = tk.Frame(body, bg=PAPER, highlightthickness=0, bd=0)
+    form.grid(row=4, column=0, sticky="ew", pady=(16, 0))
+    form.grid_columnconfigure(1, weight=1)
+    _text(form, "Password", 13).grid(row=0, column=0, sticky="w", padx=(0, 16), pady=6)
+    password_shell, app.password_entry = _entry(form, app.wifi_password)
+    password_shell.grid(row=0, column=1, sticky="ew", pady=6)
+    app.password_entry.configure(show="*")
+    _text(form, "City", 13).grid(row=1, column=0, sticky="w", padx=(0, 16), pady=6)
+    city_shell, _city_entry = _entry(form, app.address)
+    city_shell.grid(row=1, column=1, sticky="ew", pady=6)
+    _text(form, "Update every", 13).grid(row=2, column=0, sticky="w", padx=(0, 16), pady=6)
+    gap = tk.Frame(form, bg=PAPER, highlightthickness=0, bd=0)
+    gap.grid(row=2, column=1, sticky="w", pady=6)
+    app.wifi_interval_box = _minutes_entry(gap, app.interval_text)
+    app.wifi_interval_box.pack(side="left", ipady=6, ipadx=8)
+    app.wifi_interval_box.bind("<FocusOut>", lambda _event: app._commit_interval())
+    app.wifi_interval_box.bind("<Return>", lambda _event: app._commit_interval())
+    _text(gap, "minutes", 12, MUTED).pack(side="left", padx=(8, 0))
+    app.save_button = Command(form, "Save on board", app.start_wifi_save)
+    app.save_button.grid(row=3, column=1, sticky="w", pady=(12, 0))
+    _text(body, "", 13, variable=app.wifi_status).grid(row=5, column=0, sticky="ew", pady=(12, 0))
+    _text(body, "After it connects, unplug the board from the PC and power it from any USB port.", 12, MUTED).grid(
+        row=6, column=0, sticky="w", pady=(8, 0)
+    )
+    Command(body, "Change board", app.show_picker, kind="quiet").grid(row=7, column=0, sticky="w", pady=(16, 0))
 
 
 def _section(parent, title: str, row: int) -> None:
@@ -417,6 +476,10 @@ def _prices(app, body: tk.Frame) -> None:
     app.wiring_link.configure(cursor="hand2")
     app.wiring_link.pack(anchor="w")
     app.wiring_link.bind("<Button-1>", lambda _event: app.show_wiring())
+    board_link = _text(foot, "Change board", 13, ACCENT)
+    board_link.configure(cursor="hand2")
+    board_link.pack(anchor="w", pady=(4, 0))
+    board_link.bind("<Button-1>", lambda _event: app.show_picker())
     tray = _wrap(app, _text(foot, "", 12, MUTED, app.tray_text))
     tray.pack(anchor="w", pady=(6, 0))
     app.footer_label = tray
@@ -506,8 +569,10 @@ def apply_scale(app, width: int) -> None:
 
 
 def show(app, page: tk.Frame) -> None:
-    for other in (app.wiring_page, app.upload_page, app.price_page):
+    pages = (app.board_page, app.wiring_page, app.upload_page, app.wifi_page, app.price_page)
+    names = ("board", "wiring", "upload", "wifi", "prices")
+    for other in pages:
         if other.winfo_manager():
             other.grid_remove()
     page.grid(row=0, column=0, sticky="nsew")
-    app.page = "wiring" if page is app.wiring_page else "upload" if page is app.upload_page else "prices"
+    app.page = names[pages.index(page)]
