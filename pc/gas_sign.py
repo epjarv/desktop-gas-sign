@@ -33,7 +33,7 @@ from prices import PriceError, Lookup, average, format_display, lookup_address
 from uploader import UploadError, upload_sketch
 from view import apply_scale, build as build_view, show as show_page
 
-APP_VERSION = "1.10"
+APP_VERSION = "1.11"
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "gas_sign_config.json"
 UNIT_LABELS = {
@@ -144,7 +144,7 @@ def tray_sentence(minutes: int) -> str:
 class App:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title(f"Desktop Gas Sign {APP_VERSION}")
+        self.root.title(f"Desktop Gas Sign Arduino {APP_VERSION}")
         self.root.update_idletasks()
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
@@ -260,7 +260,7 @@ class App:
             pystray.MenuItem("Update now", self._tray_update),
             pystray.MenuItem("Quit", self._tray_quit),
         )
-        self.icon = pystray.Icon("desktop_gas_sign", load_app_icon(64), "Desktop Gas Sign", menu)
+        self.icon = pystray.Icon("desktop_gas_sign", load_app_icon(64), "Desktop Gas Sign Arduino", menu)
         threading.Thread(target=self.icon.run, name="tray", daemon=True).start()
         self.tray_ok = True
 
@@ -301,7 +301,7 @@ class App:
         try:
             self.icon.notify(
                 f"Still running. It looks up this city about every {self.minutes()} minutes. Right-click the icon and choose Quit to exit.",
-                "Desktop Gas Sign",
+                "Desktop Gas Sign Arduino",
             )
         except Exception:
             pass

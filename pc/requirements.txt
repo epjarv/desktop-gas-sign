@@ -1,3 +1,4 @@
+esptool>=4.7
 pyserial>=3.5
 requests>=2.31
 pystray>=0.19

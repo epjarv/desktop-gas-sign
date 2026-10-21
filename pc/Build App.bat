@@ -8,10 +8,13 @@ if %errorlevel%==0 (
 )
 %PY% -m pip install -r requirements.txt
 if errorlevel 1 goto fail
-%PY% -m PyInstaller --noconfirm --clean --windowed --onefile --name "Desktop Gas Sign" --icon "..\assets\icon.ico" --distpath dist --workpath build --collect-all pystray --collect-all PIL --hidden-import pystray._win32 --hidden-import requests --hidden-import serial --add-data "firmware/gas_sign.hex;firmware" --add-data "firmware/avrdude.exe;firmware" --add-data "firmware/avrdude.conf;firmware" --add-data ".cache/geocode.json;cache" --add-data "..\assets\icon.png;assets" gas_sign.py
+%PY% -m PyInstaller --noconfirm --clean --windowed --onefile --name "Desktop Gas Sign Arduino" --icon "..\assets\icon.ico" --distpath dist --workpath build --collect-all pystray --collect-all PIL --hidden-import pystray._win32 --hidden-import requests --hidden-import serial --add-data "firmware/gas_sign.hex;firmware" --add-data "firmware/avrdude.exe;firmware" --add-data "firmware/avrdude.conf;firmware" --add-data ".cache/geocode.json;cache" --add-data "..\assets\icon.png;assets" gas_sign.py
+if errorlevel 1 goto fail
+%PY% -m PyInstaller --noconfirm --clean --windowed --onefile --name "Desktop Gas Sign ESP8266" --icon "..\assets\icon.ico" --distpath dist --workpath build --collect-all esptool --collect-all PIL --hidden-import serial --add-data "firmware/gas_sign_nodemcu.bin;firmware" --add-data "..\assets\icon.png;assets" gas_sign_esp.py
 if errorlevel 1 goto fail
 echo.
-echo Built: dist\Desktop Gas Sign.exe
+echo Built: dist\Desktop Gas Sign Arduino.exe
+echo Built: dist\Desktop Gas Sign ESP8266.exe
 pause
 exit /b 0
 :fail
