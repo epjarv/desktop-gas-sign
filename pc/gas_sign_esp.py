@@ -17,7 +17,7 @@ except ImportError:
 from esp_upload import UploadError, flash_board
 import esp_view
 
-APP_VERSION = "1.11"
+APP_VERSION = "1.12"
 
 
 def clamp_minutes(value, fallback: int = 30) -> int:
@@ -53,6 +53,8 @@ class App:
         self.rx = ""
         self.upload_running = False
         self.save_running = False
+        self.board_ready = False
+        self.price_note = ""
         self._quitting = False
         esp_view.build(self)
         esp_view.show(self, self.wiring_page)
@@ -196,16 +198,23 @@ class App:
             if line is None:
                 break
             if line.startswith("OK CONNECTED"):
-                self.root.after(0, lambda: self._save_done("Connected. You can unplug it from the PC and use any USB power."))
+                self.root.after(0, lambda: self._save_done("Configured. The board will retry until a price arrives.", True))
                 return
+            if line.startswith("ERR PRICE"):
+                self.price_note = line[9:].strip()
+                continue
             if line.startswith("ERR"):
                 error = line[4:].strip() or "The board reported an error."
                 break
-        self.root.after(0, lambda error=error: self._save_done(error))
+        self.root.after(0, lambda error=error: self._save_done(error, False))
 
-    def _save_done(self, message: str) -> None:
+    def _save_done(self, message: str, ready: bool = False) -> None:
         self.save_running = False
         self.save_button.configure(state="normal")
+        if ready:
+            self.board_ready = True
+            if self.price_note:
+                message = "Configured. It will retry. " + self.price_note
         self.setup_status.set(message)
 
     def _write_line(self, text: str) -> None:
@@ -251,6 +260,14 @@ class App:
                 self.setup_status.set("Scanning")
             elif line == "SCAN_DONE":
                 self.setup_status.set("Select a network.")
+            elif line.startswith("PRICE") and self.board_ready:
+                self.setup_status.set("Updated. " + line[6:].strip())
+            elif line.startswith("ERR PRICE"):
+                reason = line[9:].strip()
+                if self.board_ready:
+                    self.setup_status.set("Configured. It will retry. " + reason)
+                else:
+                    self.price_note = reason
             elif line.startswith("ERR"):
                 self.setup_status.set(line[4:].strip())
             return

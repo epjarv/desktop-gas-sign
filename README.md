@@ -2,7 +2,7 @@
 
 Two ways to build the same desk sign. Both use two 4-digit TM1637 displays.
 
-Version 1.11.
+Version 1.12.
 
 Project: https://github.com/epjarv/desktop-gas-sign
 
@@ -26,7 +26,7 @@ The first screen is the pinout. The next screen can load the program onto the bo
 
 On the Arduino app, type a city and click Look up, or type your own prices and click Set prices. Click Connect so the sign can show the numbers. Closing the window leaves it in the system tray. Quit is on the tray icon.
 
-On the ESP8266 app, scan for Wi-Fi, choose the network, type the password and a city, and save. When it says it connected, unplug it from the PC and power it from any USB port.
+On the ESP8266 app, scan for Wi-Fi, choose the network, type the password and a city, and save. Wi-Fi and the city stay saved even if the first price download fails. The board retries. When a price arrives, unplug it from the PC and power it from any USB port.
 
 The Arduino sketch is in arduino/gas_sign_pro_micro. The NodeMCU sketch is in esp8266/gas_sign_nodemcu. The PC apps are in pc/.
 

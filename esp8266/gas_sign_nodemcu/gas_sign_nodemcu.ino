@@ -199,15 +199,26 @@ void saveConfig() {
   EEPROM.commit();
 }
 
-int readByte(WiFiClientSecure &client, unsigned long deadline) {
+char fetchNote[80];
+
+void setFetchNote(const char *text) {
+  strncpy(fetchNote, text, sizeof(fetchNote) - 1);
+  fetchNote[sizeof(fetchNote) - 1] = '\0';
+}
+
+int readByte(WiFiClientSecure &client, unsigned long started, bool *timedOut) {
+  unsigned long idleStart = millis();
   while (!client.available()) {
-    if ((long)(millis() - deadline) >= 0) {
+    unsigned long now = millis();
+    if (now - idleStart >= 15000UL || now - started >= 90000UL) {
+      *timedOut = true;
       return -1;
     }
     if (!client.connected()) {
       return -1;
     }
     delay(1);
+    yield();
   }
   return client.read();
 }
@@ -215,18 +226,23 @@ int readByte(WiFiClientSecure &client, unsigned long deadline) {
 bool httpsEachByte(const char *host, const char *path, bool (*onByte)(char, void *), void *ctx) {
   WiFiClientSecure client;
   client.setInsecure();
-  client.setTimeout(12000);
-  client.setBufferSizes(1024, 512);
+  client.setTimeout(15000);
+  // BearSSL drops a record larger than this buffer. 16384 is the smallest size
+  // that can read the Natural Resources Canada price page.
+  client.setBufferSizes(16384, 512);
+  fetchNote[0] = '\0';
   if (!client.connect(host, 443)) {
+    setFetchNote("Could not open the price site.");
     return false;
   }
   client.print(F("GET "));
   client.print(path);
   client.print(F(" HTTP/1.0\r\nHost: "));
   client.print(host);
-  client.print(F("\r\nUser-Agent: DesktopGasSign/1.11 (DIY desktop fuel sign)\r\nConnection: close\r\n\r\n"));
+  client.print(F("\r\nUser-Agent: DesktopGasSign/1.12 (DIY desktop fuel sign)\r\nConnection: close\r\n\r\n"));
 
-  unsigned long deadline = millis() + 20000;
+  unsigned long started = millis();
+  bool timedOut = false;
   char statusLine[16];
   int statusLen = 0;
   int status = 0;
@@ -238,7 +254,7 @@ bool httpsEachByte(const char *host, const char *path, bool (*onByte)(char, void
   int rollLen = 0;
   const char *end = "\r\n\r\n";
   while (!headerDone) {
-    int value = readByte(client, deadline);
+    int value = readByte(client, started, &timedOut);
     if (value < 0) {
       client.stop();
       return false;
@@ -278,15 +294,21 @@ bool httpsEachByte(const char *host, const char *path, bool (*onByte)(char, void
       matched = (c == end[0]) ? 1 : 0;
     }
   }
+  if (timedOut) {
+    client.stop();
+    setFetchNote("The price page was cut off.");
+    return false;
+  }
   if (status != 200) {
     client.stop();
+    setFetchNote("The price site returned an error.");
     return false;
   }
 
   int seen = 0;
   if (!chunked) {
     while (seen < BODY_LIMIT) {
-      int value = readByte(client, deadline);
+      int value = readByte(client, started, &timedOut);
       if (value < 0) {
         break;
       }
@@ -300,7 +322,7 @@ bool httpsEachByte(const char *host, const char *path, bool (*onByte)(char, void
       char sizeText[8];
       int sizeLen = 0;
       while (sizeLen < 6) {
-        int value = readByte(client, deadline);
+        int value = readByte(client, started, &timedOut);
         if (value < 0) {
           client.stop();
           return seen > 0;
@@ -318,7 +340,7 @@ bool httpsEachByte(const char *host, const char *path, bool (*onByte)(char, void
         break;
       }
       for (int i = 0; i < chunk; i++) {
-        int value = readByte(client, deadline);
+        int value = readByte(client, started, &timedOut);
         if (value < 0) {
           client.stop();
           return false;
@@ -329,12 +351,15 @@ bool httpsEachByte(const char *host, const char *path, bool (*onByte)(char, void
           return true;
         }
       }
-      readByte(client, deadline);
-      readByte(client, deadline);
+      readByte(client, started, &timedOut);
+      readByte(client, started, &timedOut);
     }
   }
   client.stop();
-  return seen > 0;
+  if (timedOut) {
+    setFetchNote("The price page was cut off.");
+  }
+  return seen > 0 && !timedOut;
 }
 
 void urlEncode(const char *in, char *out, int outLen) {
@@ -797,7 +822,11 @@ bool fetchNrcanOne(int locationId, const char *product, float *price) {
       locationId);
   NrcanScan scan;
   memset(&scan, 0, sizeof(scan));
-  if (!httpsEachByte("www2.nrcan.gc.ca", path, nrcanByte, &scan) || !scan.have) {
+  httpsEachByte("www2.nrcan.gc.ca", path, nrcanByte, &scan);
+  if (!scan.have) {
+    if (fetchNote[0] == '\0') {
+      setFetchNote("The price page had no figure.");
+    }
     return false;
   }
   *price = scan.price;
@@ -1095,7 +1124,7 @@ bool fetchPrices() {
   }
   if (!config.hasGeo) {
     if (!geocodeCity()) {
-      Serial.println(F("ERR The city could not be located."));
+      Serial.println(F("ERR PRICE The city could not be located."));
       return false;
     }
   }
@@ -1113,11 +1142,16 @@ bool fetchPrices() {
   } else if (strcmp(config.country, "gb") == 0) {
     ok = fetchUk(&regular, &hasRegular, &diesel, &hasDiesel);
   } else {
-    Serial.println(F("ERR Automatic prices are not set up for that country."));
+    Serial.println(F("ERR PRICE Automatic prices are not set up for that country."));
     return false;
   }
   if (!ok) {
-    Serial.println(F("ERR The price feed did not return a number."));
+    Serial.print(F("ERR PRICE "));
+    if (fetchNote[0] == '\0') {
+      Serial.println(F("The price page had no figure."));
+    } else {
+      Serial.println(fetchNote);
+    }
     return false;
   }
   applyPrices(regular, hasRegular, diesel, hasDiesel, minor);
